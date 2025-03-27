@@ -31,8 +31,8 @@ class GraphPerceptionAgent:
         self.llm_pipeline = llm_pipeline
         self.max_new_tokens = max_new_tokens
         self.top_percent = top_percent
-        self.sample_size = sample_size
         self.G = None
+        self.sample_size = sample_size
         self.partition = {}
         self.sorted_communities = []
         self.ppr_scores = {}
@@ -46,7 +46,7 @@ class GraphPerceptionAgent:
         self._run_louvain_partition()
         self._sort_communities_by_size()
 
-    def generate_environment_report(self, require_label_distribution=False, data_file=None) -> str:
+    def generate_environment_report(self, require_label_distribution=True, data_file=None) -> str:
         """
         生成环境状态报告（社区分布概况、图结构）。
         如果 require_label_distribution=True，则额外统计各 label 的节点数量并放入report。
@@ -384,16 +384,16 @@ Do not include any explanations, extra text, or additional keys.
         if avg_ppr_scores:
             sorted_nodes = sorted(avg_ppr_scores.items(), key=lambda x: x[1], reverse=True)
             # 取前10%的节点
-            top_percent = slef.top_percent
+            top_percent = 0.1
             top_k = max(1, int(len(sorted_nodes) * top_percent))
             top_nodes = [node for node, _ in sorted_nodes[:top_k]]
 
             # 采样数量，不超过20个节点
-            sample_size = min(self.sample_size, len(top_nodes))
+            sample_size = min(20, len(top_nodes))
             sampled_nodes = random.sample(top_nodes, sample_size)
         else:
             # 如果PPR计算失败，随机采样
-            sample_size = min(self.sample_size, len(label_nodes))
+            sample_size = min(20, len(label_nodes))
             sampled_nodes = random.sample(label_nodes, sample_size)
 
         main_logger.info(f"[GraphPerceptionAgent] For label={target_label}, we sample {len(sampled_nodes)} nodes for enhancement.")

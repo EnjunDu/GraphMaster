@@ -13,8 +13,10 @@ from manager_agent import ManagerAgent
 from perception_agent import GraphPerceptionAgent
 from enhancement_agent import GraphEnhancementAgent
 from evaluation_agent import GraphEvaluationAgent
-import os
+
+# Set PyTorch memory allocation settings to avoid fragmentation
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"
 
 def main():
     main_logger, result_logger = setup_logging()
@@ -24,13 +26,12 @@ def main():
     parser.add_argument('--max_tokens', type=int, default=9196, help="Max new tokens for generation")
     parser.add_argument('--max_iterations', type=int, default=100, help="Max iteration loops for enhancement-evaluation")
     parser.add_argument('--data_file', type=str, default="./data/cora.json", help="Path to the input data file")
+    parser.add_argument('--visualize_sampling', action='store_true', help="Whether to visualize the sampling result in PerceptionAgent")
+    parser.add_argument('--early_stopping', type= int, default=3)
     parser.add_argument('--llm_model', type=str, default="QwQ", 
                         help="Available options: QwQ, Deepseek, Qwen (Qwen1.5-32B), LLaMA (Samantha-1.1-llama-33b), or custom path")
     parser.add_argument('--hf_token', type=str, default=None, 
                         help="Hugging Face token for accessing gated models")
-    parser.add_argument('--visualize_sampling', action='store_true', help="Whether to visualize the sampling result in PerceptionAgent")
-    parser.add_argument('--early_stopping', type= int, default=3)
-    parser.add_argument('--llm_model', type=str, default="QwQ", help="choose between QwQ-32B or Deepseek-32B")
     parser.add_argument('--enhancement_mode', type=str, default=None,
                         choices=['semantic', 'topological', None],
                         help="Choose enhancement mode: 'semantic' or 'topological' or None (auto-decide by agent)")
@@ -42,6 +43,8 @@ def main():
                         help="Percentage of nodes to sample from the highest PPR score community")
     parser.add_argument('--sample_size', type=int, default=30,
                         help="Number of nodes to sample from the highest PPR score community")
+    parser.add_argument('--load_in_8bit', action='store_true', help="Load model in 8-bit mode to save memory")
+    parser.add_argument('--load_in_4bit', action='store_true', help="Load model in 4-bit mode to save memory")
     args = parser.parse_args()
 
     # Standardize model name by removing numbers and dashes
@@ -70,9 +73,10 @@ def main():
             args.model_name = model_mapping["qwq"]
 
     # ========== 1. 设置环境变量与设备 ==========
+    # Fix GPU device mapping
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
     os.environ["HF_HOME"] = args.cache_dir
-
+    
     # Print debug info about available devices
     visible_devices = os.environ.get("CUDA_VISIBLE_DEVICES", "")
     main_logger.info(f"[main] Visible devices: {visible_devices}")
@@ -81,19 +85,87 @@ def main():
         main_logger.info(f"[main] GPU {i}: {torch.cuda.get_device_name(i)}, "
                         f"Free: {torch.cuda.mem_get_info(i)[0]/1024**3:.2f} GiB, "
                         f"Total: {torch.cuda.mem_get_info(i)[1]/1024**3:.2f} GiB")
-        
+
     # ========== 2. 加载大模型与 pipeline ==========
     ensure_model_downloaded(args.model_name, args.cache_dir)
-
     main_logger.info("[main] Loading model and tokenizer...")
     tokenizer = AutoTokenizer.from_pretrained(args.model_name, cache_dir=args.cache_dir)
-    model = AutoModelForCausalLM.from_pretrained(
-        args.model_name,
-        cache_dir=args.cache_dir,
-        device_map="auto",  # 自动分配GPU
-        torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32
+    
+    # Configure model loading parameters to reduce memory usage
+    model_kwargs = {
+        "cache_dir": args.cache_dir,
+        "torch_dtype": torch.float16 if torch.cuda.is_available() else torch.float32,
+    }
+    
+    # Add quantization parameters if specified
+    if args.load_in_8bit:
+        model_kwargs["load_in_8bit"] = True
+        main_logger.info("[main] Loading model in 8-bit precision")
+    elif args.load_in_4bit:
+        model_kwargs["load_in_4bit"] = True
+        model_kwargs["bnb_4bit_compute_dtype"] = torch.float16
+        model_kwargs["bnb_4bit_use_double_quant"] = True
+        model_kwargs["bnb_4bit_quant_type"] = "nf4"
+        main_logger.info("[main] Loading model in 4-bit precision")
+    else:
+        # Configure device map - instead of "auto", specify a balanced allocation
+        # Get number of layers from model config
+        try:
+            from transformers import AutoConfig
+            config = AutoConfig.from_pretrained(args.model_name, cache_dir=args.cache_dir)
+            num_layers = getattr(config, "num_hidden_layers", 32)  # Default to 32 if not found
+            main_logger.info(f"[main] Model has {num_layers} layers")
+            
+            # Create a balanced device map across available GPUs
+            num_gpus = torch.cuda.device_count()
+            layers_per_gpu = num_layers // num_gpus
+            device_map = {}
+            
+            # Assign model parts to specific GPUs
+            for i in range(num_gpus):
+                start_layer = i * layers_per_gpu
+                end_layer = (i + 1) * layers_per_gpu if i < num_gpus - 1 else num_layers
+                for j in range(start_layer, end_layer):
+                    device_map[f"transformer.h.{j}"] = i
+            
+            # Assign other model components
+            device_map["transformer.word_embeddings"] = 0
+            device_map["transformer.final_layernorm"] = num_gpus - 1
+            device_map["transformer.ln_f"] = num_gpus - 1  # Some models use this name
+            device_map["lm_head"] = num_gpus - 1
+            
+            model_kwargs["device_map"] = device_map
+            main_logger.info(f"[main] Using custom device map: {device_map}")
+        except Exception as e:
+            main_logger.warning(f"[main] Failed to create custom device map: {e}")
+            model_kwargs["device_map"] = "auto"
+    
+    # Enable gradient checkpointing to save memory
+    model_kwargs["attn_implementation"] = "eager"  # Use eager mode which is more memory efficient
+    
+    try:
+        # First try loading with all optimizations
+        model = AutoModelForCausalLM.from_pretrained(
+            args.model_name,
+            **model_kwargs
+        )
+    except Exception as e:
+        main_logger.error(f"[main] Error loading model with optimizations: {e}")
+        main_logger.info("[main] Trying to load model with fewer optimizations...")
+        # Fallback to simpler loading
+        model = AutoModelForCausalLM.from_pretrained(
+            args.model_name,
+            cache_dir=args.cache_dir,
+            device_map="auto",
+            torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32
+        )
+    
+    # Configure pipeline with better memory management
+    text_generation_pipeline = TextGenerationPipeline(
+        model=model, 
+        tokenizer=tokenizer,
+        batch_size=1  # Process one input at a time to save memory
     )
-    text_generation_pipeline = TextGenerationPipeline(model=model, tokenizer=tokenizer)
     main_logger.info("[main] Model and tokenizer loaded successfully.")
 
     # ========== 3. 初始化各 Agent ==========
@@ -132,7 +204,8 @@ def main():
     iteration = 0
     continue_flag = True
 
-    # 创建副本文件 data_file_enhanced.json
+    # 创建副本文件 enhanced_data_file.json
+    # Create a copy file enhanced_data_file.json
     original_data_file = args.data_file
     enhanced_data_file = original_data_file.replace(".json", "_enhanced.json")
     if not os.path.exists(enhanced_data_file):
@@ -140,19 +213,21 @@ def main():
         main_logger.info(f"[main] Enhanced file created: {enhanced_data_file} (copied from {original_data_file})")
     else:
         main_logger.info(f"[main] Found existing enhanced file: {enhanced_data_file}. Continuing enhancement.")
+
+    # 将 args.data_file 修改为增强文件，后续所有操作均基于该文件
     args.data_file = enhanced_data_file
 
-    # Create a copy file data_file_enhanced.json
-    data_file_enhanced = args.data_file.replace(".json", "_enhanced.json")
-
     # Check if the enhanced file exists
-    if not os.path.exists(data_file_enhanced):
+    if not os.path.exists(enhanced_data_file):
         # If it does not exist, create a new file and initialize it with the original data
-        create_enhanced_file(args.data_file, data_file_enhanced)
+        create_enhanced_file(original_data_file, enhanced_data_file)
     else:
         # If it exists, no need to create it; just load and continue
-        main_logger.info(f"[main] Found existing enhanced file: {data_file_enhanced}. Continuing enhancement.")
+        main_logger.info(f"[main] Found existing enhanced file: {enhanced_data_file}. Continuing enhancement.")
 
+    # Clear CUDA cache before starting iterations
+    torch.cuda.empty_cache()
+    main_logger.info("[main] Cleared CUDA cache before starting iterations")
 
     while continue_flag and iteration < args.max_iterations:
         output_data = []  # 用于存储每轮增强的结果
@@ -161,26 +236,42 @@ def main():
         current_mode = manager_agent.enhancement_mode
         main_logger.info(f"[main] Current enhancement mode: {current_mode}")
 
-        evaluated_data_str, continue_flag = manager_agent.run_manager_pipeline(early_stopping=args.early_stopping, current_iteration=iteration)
-        if not evaluated_data_str.strip():
-            main_logger.info("[main] No valid enhancement data obtained. Stopping iterations.")
-            break
+        # Clear CUDA cache before each iteration
+        torch.cuda.empty_cache()
+        main_logger.info(f"[main] Memory status before iteration {iteration + 1}:")
+        for i in range(torch.cuda.device_count()):
+            free, total = torch.cuda.mem_get_info(i)
+            main_logger.info(f"[main] GPU {i}: Free: {free/1024**3:.2f} GiB, Used: {(total-free)/1024**3:.2f} GiB")
 
-        # 调用数据清洗功能：转换混乱 JSON 为标准格式
-        cleaned_data_str = reformat_json_str(evaluated_data_str)
-        main_logger.info(f"[main] Cleaned JSON data at iteration {iteration + 1}:")
-        main_logger.info(cleaned_data_str)
+        try:
+            evaluated_data_str, continue_flag = manager_agent.run_manager_pipeline(early_stopping=args.early_stopping, current_iteration=iteration)
+            if not evaluated_data_str.strip():
+                main_logger.info("[main] No valid enhancement data obtained. Stopping iterations.")
+                break
 
-        # 将本轮数据转换为字典，并追加到 output_data 列表
-        current_result = {"iteration": iteration + 1, "enhanced_data": cleaned_data_str, "mode": current_mode}
+            # 调用数据清洗功能：转换混乱 JSON 为标准格式
+            cleaned_data_str = reformat_json_str(evaluated_data_str)
+            main_logger.info(f"[main] Cleaned JSON data at iteration {iteration + 1}:")
+            main_logger.info(cleaned_data_str)
 
-        # 更新 enhanced 数据
-        update_enhanced_data(data_file_enhanced, cleaned_data_str)
+            # 将本轮数据转换为字典，并追加到 output_data 列表
+            current_result = {"iteration": iteration + 1, "enhanced_data": cleaned_data_str, "mode": current_mode}
 
-        result_logger.info(f"****************{iteration+1}****************, "
-                           f"mode: {current_mode}, "
-                           f"data: {cleaned_data_str} ")
+            # 更新 enhanced 数据
+            update_enhanced_data(enhanced_data_file, cleaned_data_str)
 
+            result_logger.info(f"****************{iteration+1}****************, "
+                            f"mode: {current_mode}, "
+                            f"data: {cleaned_data_str} ")
+
+        except Exception as e:
+            main_logger.error(f"[main] Error in iteration {iteration + 1}: {e}")
+            # Try to recover by clearing cache and continuing
+            torch.cuda.empty_cache()
+            if iteration >= args.early_stopping:
+                main_logger.info("[main] Reached early stopping point with errors. Stopping iterations.")
+                break
+        
         iteration += 1
 
         if not continue_flag:
@@ -225,7 +316,6 @@ def ensure_model_downloaded(model_name, cache_dir, token=None):
             raise
     else:
         logger.info(f"[ensure_model_downloaded] Model found in cache: {model_path}. Skipping download.")
-
 
 
 
