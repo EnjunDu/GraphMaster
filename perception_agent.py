@@ -140,7 +140,16 @@ class GraphPerceptionAgent:
             label_count = self._compute_label_distribution()
             
             for label, count in label_count.items():
-                label_nodes = [n for n, attr in self.G.nodes(data=True) if attr.get('label') == int(label)]
+                # Fix: Handle non-numeric labels properly
+                if str(label).isdigit():
+                    # For numeric labels
+                    label_nodes = [n for n, attr in self.G.nodes(data=True) 
+                                 if attr.get('label') == int(label)]
+                else:
+                    # For non-numeric labels (like "unknown")
+                    label_nodes = [n for n, attr in self.G.nodes(data=True) 
+                                 if attr.get('label') == label]
+                
                 label_subgraph = self.G.subgraph(label_nodes)
                 
                 class_stats[label] = {
@@ -220,7 +229,7 @@ The community detection identified the following communities:
         label_count = {}
         for node_id in self.G.nodes:
             label = self.G.nodes[node_id].get('label', 'unknown')
-            label_count[label] = label_count.get(label, 0) + 1
+            label_count[str(label)] = label_count.get(str(label), 0) + 1
         return label_count
 
     def _build_graph_from_data(self):
@@ -644,9 +653,9 @@ The community detection identified the following communities:
             outputs = self.llm_pipeline(
                 prompt,
                 max_new_tokens=self.max_new_tokens,
-                do_sample=False,
+                do_sample=True,
                 temperature=0.7,
-                top_p=1
+                top_p=0.90
             )
             return outputs[0]["generated_text"].strip()
         except Exception as e:

@@ -121,9 +121,9 @@ class ManagerAgent:
                 output = self.text_generation(
                     prompt,
                     max_new_tokens=max_tokens,
-                    do_sample=False,
+                    do_sample=True,
                     temperature=0.7,
-                    top_p=1
+                    top_p=0.90
                 )
                 result_dict["output"] = output[0]["generated_text"]
             except Exception as e:
