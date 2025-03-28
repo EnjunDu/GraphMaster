@@ -30,7 +30,7 @@ def main():
     parser.add_argument('--hf_token', type=str, default=None, 
                         help="Hugging Face token for accessing gated models")
     parser.add_argument('--visualize_sampling', action='store_true', help="Whether to visualize the sampling result in PerceptionAgent")
-    parser.add_argument('--early_stopping', type= int, default=3)
+    parser.add_argument('--early_stopping', type= int, default=10)
     parser.add_argument('--enhancement_mode', type=str, default=None,
                         choices=['semantic', 'topological', None],
                         help="Choose enhancement mode: 'semantic' or 'topological' or None (auto-decide by agent)")
