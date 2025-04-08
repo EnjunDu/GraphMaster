@@ -1,6 +1,14 @@
 # GraphMaster: Automated Graph Synthesis via LLM Agents in Data-Limited Environments
 
+
+
+<p align="center">
+<img src=tricks\GraphMaster.png alt="GraphMaster" />
+</p>
+
 GraphMaster is a novel multi-agent system for **graph data enhancement**, built upon the **Retrieval-Augmented Generation (RAG)** paradigm and powered by **Large Language Models (LLMs)**. It is designed for few-shot or low-resource graph learning tasks, where both **semantic diversity** and **structural quality** are critical.
+
+<a href='https://arxiv.org/abs/2502.01549'><img src='https://img.shields.io/badge/arXiv-2504.00711-b31b1b'></a>
 
 ## 🚀 Key Features
 

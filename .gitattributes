@@ -1,3 +1,0 @@
-data/Children.json filter=lfs diff=lfs merge=lfs -text
-data/History.json filter=lfs diff=lfs merge=lfs -text
-data/arxiv2023.json filter=lfs diff=lfs merge=lfs -text
