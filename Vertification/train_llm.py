@@ -165,8 +165,8 @@ if __name__ == "__main__":
         node_data = json.load(f)
 
     # Specify the Sentence-BERT model storage path
-    default_model_path = "/home/ai/EnjunDu/model/sentence-bert"
-    alternative_model_path = "/home/daihengwei/EnjunDu/model/sentence-bert"
+    default_model_path = "../model/sentence-bert"
+    alternative_model_path = "../model/sentence-bert"
     if os.path.exists(default_model_path):
         model_path = default_model_path
     else:

@@ -9,6 +9,9 @@ pip install -r requirements.txt
 
 ## Usage
 ```
-
+python --dataset {the dataset name} --gpu 0 --v {if v is added, the model will automatically use dataset_enhanced dataset} --log_file {dataset.log} {other hyperparameters can be adjusted as needed}
 ```
 
+
+
+**Please make sure that sentence-bert have been downloaded in ../model.**
