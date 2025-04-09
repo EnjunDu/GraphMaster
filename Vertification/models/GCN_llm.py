@@ -12,7 +12,7 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 
 
 # =======================
-# 1. 模型的整体类 (不使用DGL)
+# 1. The overall class of the model (not using DGL)
 # =======================
 class GCN(object):
     def __init__(self,
@@ -32,30 +32,30 @@ class GCN(object):
                  print_progress=True,
                  dropedge=0):
         """
-        参数基本同原来，只是去掉了对DGLGraph的依赖，并且去掉对 1433/3703 维度特征做 L1 归一化的逻辑
+        The parameters are basically the same as before, except that the dependency on DGLGraph is removed, and the logic of L1 normalization for 1433/3703 dimensional features is removed.
         """
-        self.t = time.time()               # 记录开始时间
-        self.lr = lr                       # 学习率
-        self.weight_decay = weight_decay   # L2正则化系数
-        self.epochs = epochs               # 训练轮数
+        self.t = time.time()               # Recording start time
+        self.lr = lr                       # learning rate
+        self.weight_decay = weight_decay   # L2 regularization coefficient
+        self.epochs = epochs               # Number of training rounds
         self.print_progress = print_progress
-        self.dropedge = dropedge           # 边丢弃率
+        self.dropedge = dropedge           # edge drop rate
 
-        # 配置计算设备 (CPU/GPU)
+        # Configure compute devices (CPU/GPU)
         if not torch.cuda.is_available():
             cuda = -1
         self.device = torch.device(f'cuda:{cuda%8}' if cuda >= 0 else 'cpu')
 
-        # 设置随机种子
+        # Set random seed
         if seed > 0:
             np.random.seed(seed)
             torch.manual_seed(seed)
             torch.cuda.manual_seed_all(seed)
 
-        # 数据加载和预处理
+        # Data loading and preprocessing
         self.load_data(adj, adj_eval, features, labels, tvt_nids)
 
-        # 初始化模型
+        # Initialize model
         self.model = GCN_model(
             in_feats=self.features.size(1),
             n_hidden=hidden_size,
@@ -68,46 +68,46 @@ class GCN(object):
 
     def load_data(self, adj, adj_eval, features, labels, tvt_nids):
         """
-        不使用DGL，手动处理邻接矩阵，存成稀疏的 PyTorch 矩阵（用于训练和评估）
+        Without DGL, manually process the adjacency matrix and save it as a sparse PyTorch matrix (for training and evaluation)
         """
 
-        # 1. 处理特征 (已经是从 LLM 得到的向量，不再做归一化)
+        # 1. Processing features (already vectors obtained from LLM, no more normalization)
         if isinstance(features, torch.FloatTensor) or isinstance(features, torch.cuda.FloatTensor):
             self.features = features
         else:
             self.features = torch.FloatTensor(features)
 
-        # 2. 处理标签
+        # 2. Handle tags
         if len(labels.shape) == 2:
-            labels = torch.FloatTensor(labels)  # 多标签
+            labels = torch.FloatTensor(labels)  # multiple tags
         else:
-            labels = torch.LongTensor(labels)   # 单标签
+            labels = torch.LongTensor(labels)   # single label
         self.labels = labels
 
-        # 3. 确定类别数
+        # 3. Determine the number of categories
         if len(self.labels.size()) == 1:
-            self.n_class = len(torch.unique(self.labels))  # 单标签：种类数
+            self.n_class = len(torch.unique(self.labels))  # Single label: number of categories
         else:
-            self.n_class = labels.size(1)                  # 多标签：向量长度
+            self.n_class = labels.size(1)                  # Multi-label: vector length
 
-        # 4. 划分训练/验证/测试集
+        # 4. Split into training/validation/test sets
         self.train_nid = tvt_nids['train']
         self.val_nid = tvt_nids['val']
         self.test_nid = tvt_nids['test']
 
-        # 5. 构建训练用的稀疏矩阵
+        # 5. Constructing a sparse matrix for training
         assert sp.issparse(adj)
         adj = sp.coo_matrix(adj) if not isinstance(adj, sp.coo_matrix) else adj
-        # 添加自环
+        # Add self loop
         adj.setdiag(1)
-        # 转化为 PyTorch 稀疏矩阵并做对称归一化
-        self.adj_orig = adj  # 先存一份原始的，用于dropEdge
+        # Convert to PyTorch sparse matrix and do symmetric normalization
+        self.adj_orig = adj  # Save the original copy first for dropEdge
         self.A = self._build_sparse_graph(adj)
 
-        # 6. 构建验证/测试用的稀疏矩阵
+        # 6. Constructing sparse matrix for validation/testing
         assert sp.issparse(adj_eval)
         adj_eval = sp.coo_matrix(adj_eval) if not isinstance(adj_eval, sp.coo_matrix) else adj_eval
-        # 添加自环
+        # Add self loop
         adj_eval.setdiag(1)
         self.adj_eval_orig = adj_eval
         self.A_eval = self._build_sparse_graph(adj_eval)
@@ -115,13 +115,13 @@ class GCN(object):
 
     def _build_sparse_graph(self, adj_sp):
         """
-        将 scipy.sparse.coo_matrix -> PyTorch 稀疏张量，并完成对称归一化
+        Convert scipy.sparse.coo_matrix -> PyTorch sparse tensor and complete symmetric normalization
         A_hat = D^{-1/2} * A * D^{-1/2}
         """
         if not sp.isspmatrix_coo(adj_sp):
             adj_sp = sp.coo_matrix(adj_sp)
 
-        # 计算度
+        # calculate degree
         row_sum = np.array(adj_sp.sum(1))  # (N,1)
         d_inv_sqrt = np.power(row_sum, -0.5).flatten()  # (N,)
         d_inv_sqrt[np.isinf(d_inv_sqrt)] = 0.0
@@ -141,28 +141,28 @@ class GCN(object):
 
     def dropEdge(self):
         """
-        对 self.adj_orig 进行随机丢弃部分边，再重新计算并更新 self.A
+        Randomly discard some edges of self.adj_orig, then recalculate and update self.A
         """
-        # 只对上三角丢边，然后再 sym + I
+        # Only drop the edge of the upper triangle, then sym + I
         upper = sp.triu(self.adj_orig, k=1)
         n_edge = upper.nnz
-        # 保留的边数
+        # Number of edges retained
         n_edge_left = int((1 - self.dropedge) * n_edge)
-        # 随机选择保留哪些边
+        # Randomly choose which edges to keep
         idx_left = np.random.choice(n_edge, n_edge_left, replace=False)
 
         data = upper.data[idx_left]
         row = upper.row[idx_left]
         col = upper.col[idx_left]
 
-        # 重构新的邻接矩阵 (COO)
+        # Reconstruct the new adjacency matrix (COO)
         adj_new = sp.coo_matrix((data, (row, col)), shape=self.adj_orig.shape)
-        # 对称
+        # symmetry
         adj_new = adj_new + adj_new.T
-        # 添加自环
+        # Add self loop
         adj_new.setdiag(1)
 
-        # 更新 self.A
+        # Update self.A
         self.A = self._build_sparse_graph(adj_new)
 
     def fit(self):
@@ -176,15 +176,15 @@ class GCN(object):
         A_eval = self.A_eval.to(self.device)
 
         if len(self.labels.size()) == 2:
-            nc_criterion = nn.BCEWithLogitsLoss()  # 多标签
+            nc_criterion = nn.BCEWithLogitsLoss()  # multiple tags
         else:
-            nc_criterion = nn.CrossEntropyLoss()    # 单标签
+            nc_criterion = nn.CrossEntropyLoss()    # single label
 
         best_vali_acc = 0.0
         best_logits = None
 
         for epoch in range(self.epochs):
-            # 若使用dropedge，则构建新的 A
+            # If dropedge is used, a new A is constructed
             if self.dropedge > 0:
                 self.dropEdge()
                 A = self.A.to(self.device)
@@ -197,7 +197,7 @@ class GCN(object):
             loss.backward()
             optimizer.step()
 
-            # 验证
+            # verify
             self.model.eval()
             with torch.no_grad():
                 logits_eval = self.model(features, A_eval).cpu()
@@ -205,7 +205,7 @@ class GCN(object):
             vali_accuracy, vali_precision, vali_recall, vali_f1 = self.eval_node_cls(
                 logits_eval[self.val_nid], self.labels[self.val_nid]
             )
-            # 与原逻辑对应，用 vali_f1 作为 vali_acc
+            # Corresponding to the original logic, use vali_f1 as vali_acc
             vali_acc = vali_f1
 
             if self.print_progress:
@@ -213,12 +213,12 @@ class GCN(object):
                       f"vali_acc={vali_acc:.4f}, vali_precision={vali_precision:.4f}, "
                       f"vali_recall={vali_recall:.4f}, vali_f1={vali_f1:.4f}")
 
-            # 如果验证集表现更好，则更新
+            # If the validation set performs better, update
             if vali_acc > best_vali_acc:
                 best_vali_acc = vali_acc
                 best_logits = logits_eval
 
-                # 同时记录测试集
+                # Record the test set at the same time
                 test_accuracy, test_precision, test_recall, test_f1 = self.eval_node_cls(
                     logits_eval[self.test_nid], self.labels[self.test_nid]
                 )
@@ -237,7 +237,7 @@ class GCN(object):
                   f"test_acc={best_test_acc:.4f}, test_prec={best_test_prec:.4f}, "
                   f"test_rec={best_test_rec:.4f}, test_f1={best_test_f1:.4f}")
 
-        # 清理
+        # clean up
         del self.model, features, labels, A, A_eval
         torch.cuda.empty_cache()
         gc.collect()
@@ -252,33 +252,33 @@ class GCN(object):
         logits = logits.cpu()
         labels = labels.cpu()
 
-        # 单标签分类
-        preds = torch.argmax(logits, dim=1)  # 获取每个节点的预测标签索引
+        # Single label classification
+        preds = torch.argmax(logits, dim=1)  # Get the predicted label index for each node
         
-        # 使用 'macro' 平均来计算精确度、召回率、F1分数
-        acc = accuracy_score(labels, preds)  # accuracy_score 用于单标签任务
+        # Use 'macro' averaging to calculate precision, recall, and F1 score
+        acc = accuracy_score(labels, preds)  # accuracy_score for single-label tasks
         prec = precision_score(labels, preds, average='macro', zero_division=0)
         rec = recall_score(labels, preds, average='macro', zero_division=0)
         f1 = f1_score(labels, preds, average='macro', zero_division=0)
 
         return acc, prec, rec, f1
     # =======================
-# 2. 模型中用到的 GCN 层
-# =======================
+    # 2. GCN layers used in the model  
+    # =======================
 class GCNLayer(nn.Module):
     def __init__(self, in_feats, out_feats, activation=None, dropout=0.0, bias=True):
         super().__init__()
         self.in_feats = in_feats
         self.out_feats = out_feats
 
-        # 参数
+        # parameter
         self.weight = nn.Parameter(torch.Tensor(in_feats, out_feats))
         if bias:
             self.bias = nn.Parameter(torch.Tensor(out_feats))
         else:
             self.bias = None
 
-        # 激活函数
+        # activation function
         self.activation = activation
         # dropout
         if dropout > 0.0:
@@ -289,7 +289,7 @@ class GCNLayer(nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self):
-        # 简单的均匀初始化
+        # Simple uniform initialization
         stdv = 1.0 / math.sqrt(self.out_feats)
         self.weight.data.uniform_(-stdv, stdv)
         if self.bias is not None:
@@ -306,7 +306,7 @@ class GCNLayer(nn.Module):
         # (N, in_feats) x (in_feats, out_feats) -> (N, out_feats)
         XW = X @ self.weight
 
-        # 稀疏相乘: (N, N) * (N, out_feats) -> (N, out_feats)
+        # Sparse multiplication: (N, N) * (N, out_feats) -> (N, out_feats)
         out = torch.sparse.mm(A, XW)
 
         if self.bias is not None:
@@ -318,21 +318,21 @@ class GCNLayer(nn.Module):
 
 
 # =======================
-# 3. GCN 模型堆叠
+# 3. GCN model stacking
 # =======================
 class GCN_model(nn.Module):
     def __init__(self, in_feats, n_hidden, n_classes, n_layers, activation, dropout):
         super().__init__()
 
         self.layers = nn.ModuleList()
-        # 第1层 (输入层) 不做dropout
+        # Layer 1 (input layer) does not perform dropout
         self.layers.append(GCNLayer(in_feats, n_hidden, activation=activation, dropout=0.0))
 
-        # 中间隐藏层
+        # middle hidden layer
         for _ in range(n_layers - 1):
             self.layers.append(GCNLayer(n_hidden, n_hidden, activation=activation, dropout=dropout))
 
-        # 输出层: 激活函数可以省略
+        # Output layer: The activation function can be omitted
         self.layers.append(GCNLayer(n_hidden, n_classes, activation=None, dropout=dropout))
 
     def forward(self, X, A):

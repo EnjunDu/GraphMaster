@@ -8,8 +8,6 @@
 
 GraphMaster is a novel multi-agent system for **graph data enhancement**, built upon the **Retrieval-Augmented Generation (RAG)** paradigm and powered by **Large Language Models (LLMs)**. It is designed for few-shot or low-resource graph learning tasks, where both **semantic diversity** and **structural quality** are critical.
 
-<a href='https://arxiv.org/abs/2504.00711'><img src='https://img.shields.io/badge/arXiv-2504.00711-b31b1b'></a>
-
 ## 🚀 Key Features
 
 - **Multi-Agent Architecture** simulating human-in-the-loop perception, enhancement, evaluation, and management.
@@ -17,6 +15,7 @@ GraphMaster is a novel multi-agent system for **graph data enhancement**, built 
 - **Semantic & Topological Modes** for diversified and structure-aware node generation.
 - **Auto-Adaptive Objective Weights** across semantic, structural, and label balance metrics.
 - **Plug-and-Play LLMs**: Easily switch between Qwen, Deepseek, LLaMA, or any HF-supported model.
+- **Data-Limited Datasets**: For more details, please refer [another README](./data/README.md).
 
 ## 🧠 Architecture
 
@@ -60,6 +59,8 @@ pip install -r requirements.txt
 ```
 
 > Requirements include `transformers`, `networkx`, `scikit-learn`, `community` (for Louvain), `matplotlib`
+>
+> The experiment is best run on either 8 A6000 GPUs with 48GB memory each or 4 A100 GPUs with 80GB memory each. However, based on our experiments, a single A100 GPU with 80GB memory can also run the experiment, albeit with a significant increase in runtime.
 
 ## 📄 Input Format
 

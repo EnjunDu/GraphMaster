@@ -15,13 +15,13 @@ def load_graph_from_json(json_path):
     node_labels = {}
     node_masks = {}
     
-    # 添加节点及其属性
+    # Adding nodes and their attributes
     for node in data:
         G.add_node(node['node_id'])
         node_labels[node['node_id']] = node['label']
         node_masks[node['node_id']] = node['mask']
         
-        # 添加边
+        # Add edges
         for neighbor in node['neighbors']:
             G.add_edge(node['node_id'], neighbor)
     
@@ -301,9 +301,9 @@ def plot_clustering_coefficient(G_original, G_synthesized, dataset_name):
 
 def plot_label_homogeneity(G_original, G_synthesized, dataset_name):
     plt.figure(figsize=(12, 10))
-    fig = plt.gcf()  # 获取当前图像对象
+    fig = plt.gcf()  # Get the current image object
 
-    # 获取所有唯一标签
+    # Get all unique tags
     all_labels = set()
     for _, label in nx.get_node_attributes(G_original, 'label').items():
         all_labels.add(label)
@@ -311,7 +311,7 @@ def plot_label_homogeneity(G_original, G_synthesized, dataset_name):
         all_labels.add(label)
     all_labels = sorted(list(all_labels))
 
-    # 计算标签之间连接矩阵的函数
+    # Function to calculate the connection matrix between labels
     def compute_label_connections(G):
         label_matrix = np.zeros((len(all_labels), len(all_labels)))
 
@@ -324,41 +324,41 @@ def plot_label_homogeneity(G_original, G_synthesized, dataset_name):
                     i = all_labels.index(u_label)
                     j = all_labels.index(v_label)
                     label_matrix[i, j] += 1
-                    label_matrix[j, i] += 1  # 无向图
+                    label_matrix[j, i] += 1  # undirected graph
 
-        # 按行和归一化以获得条件概率
+        # Sum normalized row-wise to get conditional probabilities
         row_sums = label_matrix.sum(axis=1, keepdims=True)
-        row_sums[row_sums == 0] = 1  # 避免除零
+        row_sums[row_sums == 0] = 1  # avoid division by zero
         label_matrix = label_matrix / row_sums
 
         return label_matrix
 
-    # 计算标签同质性矩阵
+    # Compute label homogeneity matrix
     label_matrix_orig = compute_label_connections(G_original)
     label_matrix_synth = compute_label_connections(G_synthesized)
 
-    # 计算矩阵差值
+    # Compute matrix difference
     diff_matrix = np.abs(label_matrix_orig - label_matrix_synth)
 
-    # 绘制热力图（美化）
+    # Draw a heat map (beautify)
     ax = sns.heatmap(diff_matrix,
                      annot=False,
-                     cmap='RdPu',         # 改为色彩丰富的映射
-                     linewidths=0.5,          # 增加格子边界线条
-                     linecolor='white',       # 边界线颜色
+                     cmap='RdPu',         # Change to colorful mapping
+                     linewidths=0.5,          # Adding grid border lines
+                     linecolor='white',       # Border line color
                      cbar_kws={'label': 'Absolute Difference'})
 
     plt.xlabel('Node Label', fontsize=28)
     plt.ylabel('Node Label', fontsize=28)
     plt.xticks(fontsize=20)
-    plt.yticks(fontsize=20, rotation=0)  # Y轴标签不旋转，更清晰
+    plt.yticks(fontsize=20, rotation=0)  # Y-axis labels do not rotate, clearer
 
-    # 优化 colorbar
+    # Optimize colorbar
     cbar = ax.collections[0].colorbar
     cbar.ax.tick_params(labelsize=20)
     cbar.set_label('Absolute Difference', size=24)
 
-    # 计算并显示相似性度量
+    # Compute and display similarity measures
     similarity = 1 - np.mean(diff_matrix)
 
     fig.text(0.1, 0.85,
@@ -373,7 +373,7 @@ def plot_label_homogeneity(G_original, G_synthesized, dataset_name):
     return similarity
 
 def analyze_graphs(G_original, G_synthesized, dataset_name):
-    """运行三个分析，并报告总体相似性"""
+    """Run three analyses and report the overall similarity"""
     deg_sim = plot_degree_distribution(G_original, G_synthesized, dataset_name)
     clust_sim = plot_clustering_coefficient(G_original, G_synthesized, dataset_name)
     label_sim = plot_label_homogeneity(G_original, G_synthesized, dataset_name)

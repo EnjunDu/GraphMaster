@@ -12,7 +12,7 @@ from models.GAT_llm import GAT
 from models.JKNet_llm import JKNet
 from models.GSAGE_llm import GraphSAGE
 
-# ====== 使用 Sentence-BERT ====== #
+# ====== Using Sentence-BERT ====== #
 from sentence_transformers import SentenceTransformer
 
 def setup_logging(log_filename):
@@ -29,35 +29,35 @@ def get_text_embedding(text, model, device='cpu'):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='single')
-    parser.add_argument('--dataset', type=str, default='cora', help="数据集名称，例如：cora、citeseer、pubmed")
-    parser.add_argument('--gnn', type=str, default='GCN', help="选择的GNN模型，例如：GCN、GAT、JKNet、GraphSAGE")
-    parser.add_argument('--gpu', type=int, default=1, help="GPU编号，-1表示使用CPU")
+    parser.add_argument('--dataset', type=str, default='cora', help="The name of the dataset, for example:cora、citeseer、pubmed")
+    parser.add_argument('--gnn', type=str, default='GCN', help="The selected GNN model, for example: GCN, GAT, JKNet, GraphSAGE")
+    parser.add_argument('--gpu', type=int, default=1, help="GPU number, -1 means using CPU")
     parser.add_argument('--v',action='store_true', help="Vertification the enhancement data")
-    parser.add_argument('--hidden_size', type=int, default=128, help="隐藏层大小")
-    parser.add_argument('--n_layers', type=int, default=2, help="GNN的层数")
-    parser.add_argument('--epochs', type=int, default=1000, help="训练的轮数")
-    parser.add_argument('--seed', type=int, default=42, help="随机种子")
-    parser.add_argument('--lr', type=float, default=1e-2, help="学习率")
-    parser.add_argument('--weight_decay', type=float, default=5e-4, help="权重衰减系数")
-    parser.add_argument('--dropout', type=float, default=0.35, help="dropout比例")
-    parser.add_argument('--dropedge', type=float, default=0.0, help="边的丢弃比例（仅部分模型支持）")
-    parser.add_argument('--log_file', type=str, default='original', help="日志文件名")
+    parser.add_argument('--hidden_size', type=int, default=128, help="Hidden layer size")
+    parser.add_argument('--n_layers', type=int, default=2, help="Number of layers of GNN")
+    parser.add_argument('--epochs', type=int, default=1000, help="Number of training rounds")
+    parser.add_argument('--seed', type=int, default=42, help="random seed")
+    parser.add_argument('--lr', type=float, default=1e-2, help="learning rate")
+    parser.add_argument('--weight_decay', type=float, default=5e-4, help="Weight attenuation coefficient")
+    parser.add_argument('--dropout', type=float, default=0.35, help="dropout ratio")
+    parser.add_argument('--dropedge', type=float, default=0.0, help="Edge discard ratio (supported only by some models)")
+    parser.add_argument('--log_file', type=str, default='original', help="Log file name")
     args = parser.parse_args()
 
-    # ============ 0. 设置日志文件 ============ #
+    # ============ 0. Set up log files ============ #
     if not os.path.exists('./log'):
         os.makedirs('./log')
     setup_logging(f'./log/{args.log_file}_{args.gnn}_{args.dataset}.log')
 
-    # ============ 0.1 设置设备 ============ #
+    # ============ 0.1 Set up the device ============ #
     if args.gpu == -1 or not torch.cuda.is_available():
         os.environ['CUDA_VISIBLE_DEVICES'] = str(args.gpu)
-        device = torch.device('cuda:3')  # 这里固定写了 cuda:3，可根据需要进行修改
+        device = torch.device('cuda:3')  # cuda:3 is fixed here and can be modified as needed
     else:
         os.environ['CUDA_VISIBLE_DEVICES'] = str(args.gpu)
         device = torch.device('cuda:3')
 
-    # ============ 1. 加载节点数据 (JSON) 和生成特征 (Sentence-BERT) ============ #
+    # ============ 1. Loading node data (JSON) and generating features (Sentence-BERT) ============ #
     if args.v:
         json_path = f"../data/{args.dataset}_enhanced.json"
     else:
@@ -68,17 +68,17 @@ if __name__ == "__main__":
     with open(json_path, 'r', encoding='utf-8') as f:
         node_data = json.load(f)
 
-    # 指定 Sentence-BERT 模型存储路径
-    # 指定 Sentence-BERT 模型存储路径：首先检测默认路径是否存在，否则使用备用路径
+    # Specify the Sentence-BERT model storage path
+    # Specify the Sentence-BERT model storage path: first check if the default path exists, otherwise use the alternate path
     default_model_path = "/home/ai/EnjunDu/model/sentence-bert"
     alternative_model_path = "/home/daihengwei/EnjunDu/model/sentence-bert"
     if os.path.exists(default_model_path):
         model_path = default_model_path
     else:
         model_path = alternative_model_path
-    fallback_model_name = "sentence-transformers/all-mpnet-base-v2"  # 如果本地加载失败时回退的模型
+    fallback_model_name = "sentence-transformers/all-mpnet-base-v2"  # Fallback model if local loading fails
 
-    # 尝试加载本地 Sentence-BERT 模型，否则在线下载并保存
+    # Try to load the local Sentence-BERT model, otherwise download and save it online
     try:
         logging.info(f"Trying to load local Sentence-BERT model from: {model_path}")
         llm_model = SentenceTransformer(model_path)
@@ -86,23 +86,23 @@ if __name__ == "__main__":
         logging.warning(f"Failed to load local Sentence-BERT model from {model_path}. Error: {e}")
         logging.info(f"Loading fallback model {fallback_model_name} from Hugging Face.")
         llm_model = SentenceTransformer(fallback_model_name)
-        # 将下载的模型保存到本地 model_path
+        # Save the downloaded model to local model_path
         llm_model.save(model_path)
 
-    # 根据 node_id 排序，确保后续处理（特征、邻接等）与节点顺序一一对应
+    # Sort by node_id to ensure that subsequent processing (features, adjacency, etc.) corresponds to the node order.
     node_data_sorted = sorted([x for x in node_data if 'node_id' in x], key=lambda x: x['node_id'])
     num_nodes = len(node_data_sorted)
 
-    # ============ 1.1 生成节点文本向量特征 ============ #
+    # ============ 1.1 Generate node text vector features ============ #
     features_list = []
     for item in tqdm(node_data_sorted, desc="Generating features..."):
         text = item['text']
         embedding = get_text_embedding(text, llm_model, device=device)
         features_list.append(embedding)
-    # 拼接成 [N, embed_dim] 的张量
+    # Concatenate into a tensor of [N, embed_dim]
     features = torch.stack(features_list, dim=0)
 
-    # ============ 2. 从 JSON 中生成 tvt_nids, adj_orig, labels ============ #
+    # ============ 2. Generate tvt_nids, adj_orig, labels from JSON ============ #
     train_nids = []
     val_nids = []
     test_nids = []
@@ -116,7 +116,7 @@ if __name__ == "__main__":
         label = item["label"]
         neighbors = item["neighbors"]
 
-        # 根据 mask 分配 train/val/test
+        # Assign train/val/test according to mask
         if mask == "Train":
             train_nids.append(node_id)
         elif mask == "Validation":
@@ -140,22 +140,22 @@ if __name__ == "__main__":
 
     adj_orig = adjacency.tocsr()
 
-    # [MODIFIED] ============ 2.1 自动重映射标签以确保标签范围从0开始 ============
+    # [MODIFIED] ============ 2.1 Automatically remap labels to ensure label ranges start at 0 ============
     unique_original_labels = sorted(set(labels_list))
     logging.info(f"Unique labels (original): {unique_original_labels}")
 
-    # 建立映射 old_label -> 新的 label 索引
+    # Create a mapping old_label -> new label index
     label_to_idx = {old_label: idx for idx, old_label in enumerate(unique_original_labels)}
-    # 将 labels_list 中所有标签转换成新的索引
+    # Convert all labels in labels_list to new indices
     for i in range(len(labels_list)):
         old_label = labels_list[i]
         labels_list[i] = label_to_idx[old_label]
 
-    # 检查映射后标签的最小值和最大值
+    # Check the minimum and maximum values ​​of the mapped labels
     min_label = min(labels_list)
     max_label = max(labels_list)
     logging.info(f"Remapped label range: min={min_label}, max={max_label}")
-    # 如果仍然不满足 0 <= label < n_class，就报错
+    # If 0 <= label < n_class is still not satisfied, an error is reported
     if min_label < 0 or max_label >= len(unique_original_labels):
         raise ValueError(
             "Some labels are out of valid range after re-mapping: "
@@ -170,11 +170,11 @@ if __name__ == "__main__":
         'test': test_nids
     }
 
-    # ============ 3. 根据所选 GNN 模型进行实例化 ============ #
+    # ============ 3. Instantiate according to the selected GNN model ============ #
     if args.gnn == 'GCN':
         model = GCN(
             adj=adj_orig,
-            adj_eval=adj_orig,  # 如果评估也用同一个邻接矩阵
+            adj_eval=adj_orig,  # If the evaluation also uses the same adjacency matrix
             features=features,
             labels=labels,
             tvt_nids=tvt_nids,
@@ -248,7 +248,7 @@ if __name__ == "__main__":
     else:
         raise ValueError(f"Unsupported model type: {args.gnn}")
 
-    # ============ 4. 训练模型并输出最终结果 ============ #
+    # ============ 4. Train the model and output the final result ============ #
     best_test_acc, best_test_prec, best_test_rec, best_test_f1, best_epoch = model.fit()
     logging.info(f"args: {args}")
     logging.info(f"[Final] best_test_acc: {best_test_acc:.4f}, best_test_prec: {best_test_prec:.4f}, "

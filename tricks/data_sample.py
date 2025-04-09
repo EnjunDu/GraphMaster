@@ -9,9 +9,9 @@ import matplotlib.pyplot as plt
 
 def load_graph_from_edges_file(edges_file: str) -> nx.Graph:
     """
-    从给定的边列表文件中读取边，并构建无向图。
-    :param edges_file: 边文件路径，每行两个整数，表示 (node1, node2)
-    :return: 构建好的 NetworkX 无向图
+    Read edges from the given edge list file and construct an undirected graph.
+    :param edges_file: edge file path, two integers per line, representing (node1, node2)
+    :return: constructed NetworkX undirected graph
     """
     edges = []
     with open(edges_file, "r") as file:
@@ -32,11 +32,11 @@ def load_graph_from_edges_file(edges_file: str) -> nx.Graph:
 
 def run_louvain_community_detection(G: nx.Graph):
     """
-    对图 G 进行 Louvain 社区检测，返回社区划分字典和总社区数量。
-    :param G: 输入的 NetworkX 图
+    Perform Louvain community detection on graph G and return the community partition dictionary and the total number of communities.
+    :param G: input NetworkX graph
     :return:
-        partition: dict，key 是 node，value 是社区编号
-        num_communities: int，社区总数量
+        partition: dict, key is node, value is community number
+        num_communities: int, total number of communities
     """
     partition = community_louvain.best_partition(G)
     num_communities = max(partition.values()) + 1 if partition else 0
@@ -45,16 +45,16 @@ def run_louvain_community_detection(G: nx.Graph):
 
 def sort_communities_by_size(partition: dict) -> list:
     """
-    根据社区大小从大到小返回社区编号的排序列表。
-    :param partition: Louvain 社区分割结果
-    :return: list, 按大小降序排序的社区编号
+    Returns a sorted list of community numbers from largest to smallest based on community size.
+    :param partition: Louvain community partition result
+    :return: list, community numbers sorted in descending order by size
     """
-    # 收集社区 -> 节点列表
+    # Collect community -> Node list
     community_nodes = {}
     for node, comm_id in partition.items():
         community_nodes.setdefault(comm_id, []).append(node)
 
-    # 根据社区大小进行排序
+    # Sort by community size
     sorted_communities = sorted(
         community_nodes.keys(),
         key=lambda c: len(community_nodes[c]),
@@ -65,16 +65,16 @@ def sort_communities_by_size(partition: dict) -> list:
 
 def visualize_communities(G: nx.Graph, partition: dict, sampled_nodes=None, title="Louvain Community Detection"):
     """
-    可视化网络图及社区划分结果，支持高亮显示采样节点。
-    :param G: NetworkX 图
-    :param partition: Louvain 社区分割结果
-    :param sampled_nodes: 要高亮显示的节点列表
-    :param title: 图像标题
+    Visualize network graph and community partition results, support highlighting sampled nodes.
+    :param G: NetworkX graph
+    :param partition: Louvain community partition result
+    :param sampled_nodes: list of nodes to be highlighted
+    :param title: image title
     """
     plt.figure(figsize=(10, 7))
-    pos = nx.spring_layout(G)  # 计算布局(随机, 也可换成其他)
+    pos = nx.spring_layout(G)  # Calculate layout (random, can also be changed to other)
 
-    # 使用社区编号作为颜色
+    # Use community number as color
     colors = [partition[n] for n in G.nodes()]
     nx.draw(
         G, pos,
@@ -85,7 +85,7 @@ def visualize_communities(G: nx.Graph, partition: dict, sampled_nodes=None, titl
         alpha=0.3
     )
 
-    # 如果有采样节点，则将其在图中高亮
+    # If there is a sampling node, it will be highlighted in the graph
     if sampled_nodes:
         highlight_nodes = set(sampled_nodes)
         nx.draw_networkx_nodes(
@@ -101,7 +101,7 @@ def visualize_communities(G: nx.Graph, partition: dict, sampled_nodes=None, titl
 
 
 if __name__ == "__main__":
-    edges_file = "edges.txt"  # 默认边文件路径
+    edges_file = "edges.txt"  # Default edge file path
     print(f"[data_sample.py] Loading edges from {edges_file} ...")
     G = load_graph_from_edges_file(edges_file)
     print(f"[data_sample.py] Loaded graph with {G.number_of_nodes()} nodes and {G.number_of_edges()} edges.")
@@ -110,17 +110,17 @@ if __name__ == "__main__":
     partition, num_communities = run_louvain_community_detection(G)
     print(f"[data_sample.py] Detected {num_communities} communities.")
 
-    # 按社区大小排序
+    # Sort by community size
     sorted_communities = sort_communities_by_size(partition)
 
-    # 打印排序结果
+    # Print sorting results
     print("Communities sorted by size (descending):")
     for idx, comm in enumerate(sorted_communities):
-        # 统计该社区节点个数
+        # Count the number of nodes in the community
         node_count = sum(1 for node, c in partition.items() if c == comm)
         print(f"Rank {idx}: Community {comm} has {node_count} nodes")
 
-    # 读取用户输入
+    # Read user input
     print("\nEnter 'start_community_index end_community_index sample_size_k', e.g. '0 1 50'")
     user_input = input(">>> ")
     try:
@@ -129,7 +129,7 @@ if __name__ == "__main__":
         print("[Error] Invalid input. Please input 3 integers separated by space.")
         exit(1)
 
-    # 防御性检查
+    # defensive check
     if start_community_index < 0 or start_community_index >= len(sorted_communities):
         print("[Warning] start_community_index out of range. Force set to 0.")
         start_community_index = 0
@@ -140,7 +140,7 @@ if __name__ == "__main__":
         print(f"[Warning] end_community_index out of range. Force set to {len(sorted_communities) - 1}.")
         end_community_index = len(sorted_communities) - 1
 
-    # 收集多个社区节点
+    # Collect multiple community nodes
     selected_nodes_all = []
     for idx in range(start_community_index, end_community_index + 1):
         comm_id = sorted_communities[idx]
@@ -151,7 +151,7 @@ if __name__ == "__main__":
     print(f"[data_sample.py] Selected communities from rank {start_community_index} to {end_community_index}.")
     print(f"[data_sample.py] Total nodes in these communities: {total_nodes_count}")
 
-    # 采样
+    # sampling
     sample_k = min(sample_size_k, total_nodes_count)
     sampled_nodes = random.sample(selected_nodes_all, sample_k)
     sampled_nodes_sorted = sorted(sampled_nodes)
@@ -159,13 +159,13 @@ if __name__ == "__main__":
     output_str = ", ".join(map(str, sampled_nodes_sorted))
     print(output_str)
 
-    # 写入文件
+    # write file
     output_path = "selected_community_sampled_nodes.json"
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(output_str)
     print(f"[data_sample.py] Sampled nodes saved to {output_path}")
 
-    # （可选）可视化结果
+    # (Optional) Visualize the results
     visualize_communities(
         G, partition,
         sampled_nodes=sampled_nodes_sorted,

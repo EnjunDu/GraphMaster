@@ -11,13 +11,13 @@ import logging
 
 class ManagerAgent:
     """
-    管理者Agent，用于：
-      1) 调度 PerceptionAgent 进行图感知（环境报告）与采样（由LLM决策）
-      2) 加载并筛选原始数据（初始输入）
-      3) 自动决定本轮应使用的增强模式（semantic或topological）
-      4) 执行单次增强-评估迭代，并返回两个输出：
-         - evaluated_data_str：评估后的图数据（JSON字符串）
-         - continue_flag：布尔值，True 表示需要继续增强，False 表示停止
+    Manager Agent, used to:
+    1) Schedule PerceptionAgent for graph perception (environmental reporting) and sampling (decided by LLM)
+    2) Load and filter raw data (initial input)
+    3) Automatically determine the enhancement mode to be used in this round (semantic or topological)
+    4) Perform a single enhancement-evaluation iteration and return two outputs:
+        - evaluated_data_str: evaluated graph data (JSON string)
+        - continue_flag: Boolean value, True means that enhancement needs to continue, False means stop
     """
 
     def __init__(self,
@@ -27,20 +27,20 @@ class ManagerAgent:
                  evaluation_agent: GraphEvaluationAgent,
                  data_file: str,
                  visualize_sampling: bool = False,
-                 enhancement_mode: str = None,  # 可以为None，表示自动决定
+                 enhancement_mode: str = None,  # Can be None, indicating automatic decision
                  target_label: int = None,
                  label_target_size: int = 0
                  ):
         """
-        :param text_generation_pipeline: 大语言模型的文本生成 pipeline
-        :param perception_agent: 感知Agent
-        :param enhancement_agent: 增强Agent
-        :param evaluation_agent: 评估Agent
-        :param data_file: 包含节点信息的 JSON 文件路径
-        :param visualize_sampling: 是否在感知阶段可视化采样结果
-        :param enhancement_mode: 'semantic' or 'topological' or None (自动决定)
-        :param target_label: 当 enhancement_mode='topological' 时，需要增强的标签名
-        :param label_target_size: 希望该标签达到的总数据量
+        :param text_generation_pipeline: Text generation pipeline for large language models
+        :param perception_agent: Perception Agent
+        :param enhancement_agent: Enhancement Agent
+        :param evaluation_agent: Evaluation Agent
+        :param data_file: JSON file path containing node information
+        :param visualize_sampling: Whether to visualize sampling results in the perception phase
+        :param enhancement_mode: 'semantic' or 'topological' or None (automatically determined)
+        :param target_label: When enhancement_mode='topological', the label name to be enhanced
+        :param label_target_size: The total amount of data expected for this label
         """
         self.text_generation = text_generation_pipeline
 
@@ -49,31 +49,31 @@ class ManagerAgent:
         self.evaluation_agent = evaluation_agent
         self.data_file = data_file
         self.visualize_sampling = visualize_sampling
-        self.enhancement_mode = enhancement_mode  # 可能为None
+        self.enhancement_mode = enhancement_mode  # May be None
         self.target_label = target_label
         self.label_target_size = label_target_size
 
-        # 保存初始环境报告（增强前的基准状态）
+        # Save the initial environment report (baseline state before enhancement)
         self.initial_environment_report = self.perception_agent.generate_environment_report(
-            require_label_distribution=True  # 总是获取标签分布，用于自动决定增强模式
+            require_label_distribution=True  # Always obtain label distribution for automatic decision of enhancement mode
         )
         main_logger = logging.getLogger("main_logger")
         main_logger.info("[ManagerAgent] Initial environment report generated and stored.")
 
-        # 如果enhancement_mode为None，则自动决定初始的增强模式
+        # If enhancement_mode is None, the initial enhancement mode is automatically determined
         if self.enhancement_mode is None:
             self.enhancement_mode = self.decide_enhancement_mode(self.initial_environment_report)
             main_logger.info(f"[ManagerAgent] Auto-decided initial enhancement mode: {self.enhancement_mode}")
 
-        # 在初始化阶段，不做采样
+        # During the initialization phase, no sampling is performed
         self.sampled_node_ids = []
 
     def load_initial_data(self) -> str:
         """
-        从 data_file 中加载数据，并根据 sampled_node_ids 筛选出需要处理的节点，
-        返回 JSON 字符串。
+        Load data from data_file and filter out nodes to be processed based on sampled_node_ids,
+        and return a JSON string.
         """
-        main_logger = logging.getLogger("main_logger")  # 获取 main_logger
+        main_logger = logging.getLogger("main_logger")  # Get main_logger
         if not os.path.exists(self.data_file):
             main_logger.warning(f"[ManagerAgent] data_file={self.data_file} not found.")
             return ""
@@ -114,7 +114,7 @@ class ManagerAgent:
 
     def _extract_after_flag(self, text: str, flag: str) -> str:
         """
-        从 text 提取 "here are the generated datasets:" 之后的内容，并进行 JSON 修正
+        Extract the content after "here are the generated datasets:" from text and make JSON corrections
         """
         idx = text.lower().find(flag.lower())
         if idx == -1:
@@ -122,38 +122,38 @@ class ManagerAgent:
 
         extracted_json = text[idx + len(flag):].strip()
 
-        # 修正 JSON（去除非法控制字符）
+        # Fix JSON (remove illegal control characters)
         try:
             extracted_json = extracted_json.replace("\\n", "").replace("\\t", "").replace('\\"', '"')
-            json.loads(extracted_json)  # 确保 JSON 解析不会失败
+            json.loads(extracted_json)  # Make sure JSON parsing doesn't fail
             return extracted_json
         except json.JSONDecodeError:
-            main_logger = logging.getLogger("main_logger")  # 获取 main_logger
+            main_logger = logging.getLogger("main_logger")  # Get main_logger
             main_logger.error("[EvaluationAgent] Warning: JSON decoding failed, returning empty string.")
             return ""
 
     def decide_enhancement_mode(self, environment_report_str) -> str:
         """
-        根据环境报告自动决定应该使用哪种增强模式：semantic或topological
+        Automatically decide which enhancement mode should be used based on the environment report: semantic or topological
 
-        决策依据：
-        1. 分析社区聚集程度 - 如果社区结构不清晰，倾向于topological增强
-        2. 分析标签分布 - 如果标签分布不平衡，倾向于topological增强
-        3. 综合考虑图的整体特性
+        Decision basis:
+        1. Analyze the degree of community aggregation - if the community structure is not clear, tend to use topological enhancement
+        2. Analyze the label distribution - if the label distribution is unbalanced, tend to use topological enhancement
+        3. Comprehensively consider the overall characteristics of the graph
 
-        返回 'semantic' 或 'topological'
+        Return 'semantic' or 'topological'
         """
         main_logger = logging.getLogger("main_logger")
         main_logger.info("[ManagerAgent] Deciding enhancement mode based on environment report...")
 
-        # 解析环境报告
+        # Analyze environmental reports
         try:
             env_report = json.loads(environment_report_str)
         except json.JSONDecodeError:
             main_logger.error("[ManagerAgent] Failed to parse environment report JSON. Defaulting to semantic enhancement.")
             return "semantic"
 
-        # 构建决策提示
+        # Build decision prompts
         prompt = f"""You are a Graph Analysis Expert. 
 
 Based on the following environment report of a graph:
@@ -173,19 +173,19 @@ Based solely on the environment report, which enhancement mode would be more ben
 Please output ONLY the word "semantic" OR "topological" without any explanation or additional text.
 """
 
-        # 调用大语言模型获取决策
+        # Calling the large language model to obtain the decision
         decision = self._call_generation(prompt, max_tokens=100).strip().lower()
 
-        # 解析结果
+        # Parse results
         if "topological" in decision:
             mode = "topological"
         else:
-            # 默认为语义增强
+            # Default is semantic enhancement
             mode = "semantic"
 
         main_logger.info(f"[ManagerAgent] Enhancement mode decision: {mode}")
 
-        # 如果选择了拓扑增强但没有指定目标标签，需要自动决定
+        # If topology enhancement is selected but no target label is specified, it needs to be automatically determined
         if mode == "topological" and self.target_label is None:
             self.target_label = self.decide_target_label(environment_report_str)
             main_logger.info(f"[ManagerAgent] Auto-selected target label for topological enhancement: {self.target_label}")
@@ -194,8 +194,8 @@ Please output ONLY the word "semantic" OR "topological" without any explanation 
 
     def decide_target_label(self, environment_report_str) -> int:
         """
-        根据环境报告自动决定用于拓扑增强的目标标签
-        通常选择样本量最少或分布不均衡的标签
+        Automatically decide the target label for topology enhancement based on the environment report
+        Usually choose the label with the least sample size or uneven distribution
         """
         main_logger = logging.getLogger("main_logger")
 
@@ -206,11 +206,11 @@ Please output ONLY the word "semantic" OR "topological" without any explanation 
                 return 0
 
             label_dist = env_report["LabelDistribution"]
-            # 找出样本量最少的标签
+            # Find the label with the least number of samples
             min_label = min(label_dist.items(), key=lambda x: int(x[1]))
             target = int(min_label[0]) if min_label[0].isdigit() else 0
 
-            # 如果没有设置目标大小，设置为平均值的80%
+            # If no target size is set, it is set to 80% of the average value.
             if self.label_target_size == 0:
                 avg_size = sum(int(count) for count in label_dist.values()) / len(label_dist)
                 self.label_target_size = int(avg_size * 0.8)
@@ -223,24 +223,24 @@ Please output ONLY the word "semantic" OR "topological" without any explanation 
 
     def run_manager_pipeline(self, early_stopping, current_iteration, current_data_str: str = None ) -> (str, bool):
         """
-        执行单次增强-评估迭代：
-          1) 先获取最新的环境报告
-          2) 自动决定本轮使用的增强模式（semantic或topological）
-          3) 决定采样 (sampled_node_ids)
-          4) 如果未提供 current_data_str，则加载初始数据
-          5) 调用增强Agent 与 评估Agent
-          6) 让LLM判断是否继续迭代
+        Perform a single enhancement-evaluation iteration:
+            1) Get the latest environment report first
+            2) Automatically determine the enhancement mode (semantic or topological) used in this round
+            3) Determine sampling (sampled_node_ids)
+            4) If current_data_str is not provided, load the initial data
+            5) Call the enhancement agent and the evaluation agent
+            6) Let LLM decide whether to continue iterating
         """
-        main_logger = logging.getLogger("main_logger")  # 获取 main_logger
+        main_logger = logging.getLogger("main_logger")  # Get main_logger
 
-        # 1) 获取当前环境报告（本轮增强前的状态）
+        # 1) Get the current environment report (status before this round of enhancement)
         current_environment_report = self.perception_agent.generate_environment_report(
-            require_label_distribution=True  # 总是获取标签分布，用于自动决定增强模式
+            require_label_distribution=True  # Always obtain label distribution for automatic decision of enhancement mode
         )
         main_logger.info("[ManagerAgent] Generated current environment report for iteration.")
 
-        # 2) 在每轮自动决定增强模式，除非命令行已指定固定模式
-        if self.enhancement_mode is None or current_iteration % 3 == 0:  # 每3轮或初始时重新决定
+        # 2) Automatically determines the enhancement mode at each turn, unless a fixed mode is specified on the command line.
+        if self.enhancement_mode is None or current_iteration % 3 == 0:  # Re-determine every 3 rounds or at the beginning
             prev_mode = self.enhancement_mode
             self.enhancement_mode = self.decide_enhancement_mode(current_environment_report)
             if prev_mode != self.enhancement_mode:
@@ -248,7 +248,7 @@ Please output ONLY the word "semantic" OR "topological" without any explanation 
             else:
                 main_logger.info(f"[ManagerAgent] Enhancement mode remains {self.enhancement_mode}")
 
-        # 3) 根据当前模式决定如何采样:
+        # 3) Determine how to sample based on the current mode:
         if self.enhancement_mode == "semantic":
             self.sampled_node_ids = self.perception_agent.decide_sampling(visualize=self.visualize_sampling)
         else:  # topological mode
@@ -258,17 +258,17 @@ Please output ONLY the word "semantic" OR "topological" without any explanation 
                 visualize=self.visualize_sampling
             )
 
-        # 4) 如果没有提供 current_data_str，就从文件里过滤出需要的节点
+        # 4) If current_data_str is not provided, filter out the required nodes from the file
         if current_data_str is None:
             current_data_str = self.load_initial_data()
             if not current_data_str:
                 main_logger.warning("[ManagerAgent] current_data_str is empty. Stopping iteration.")
                 return "", False
 
-        # 5) 增强阶段
+        # 5) Reinforcement phase
         enhanced_data_str = self.enhancement_agent.enhance_graph(
             data_json_str=current_data_str,
-            environment_state_str=current_environment_report,  # 使用当前环境报告
+            environment_state_str=current_environment_report,  # Use the current environment report
             mode=self.enhancement_mode,
             target_label=self.target_label,
             label_target_size=self.label_target_size
@@ -280,7 +280,7 @@ Please output ONLY the word "semantic" OR "topological" without any explanation 
 
         main_logger.info(f'[ManagerAgent] Enhanced data generated successfully.')
 
-        # 6) 评估阶段 - 传入初始环境报告、当前环境报告和原始数据
+        # 6) Assessment phase - incoming initial environmental report, current environmental report and raw data
         evaluated_data_str = self.evaluation_agent.evaluate_graph(
             original_data_str=current_data_str,
             generated_data_str=enhanced_data_str,
@@ -288,19 +288,19 @@ Please output ONLY the word "semantic" OR "topological" without any explanation 
             current_environment_report=current_environment_report,
             mode=self.enhancement_mode,
             target_label=self.target_label,
-            perception_agent=self.perception_agent  # 传递perception_agent以便重新生成报告
+            perception_agent=self.perception_agent  # Pass the perception_agent to regenerate the report
         )
 
         if not evaluated_data_str.strip():
             main_logger.error("[ManagerAgent] Evaluation result is empty, stopping iteration.")
             return "", False
 
-        # 7) 通过 LLM 判断是否继续增强 (若已到 early_stopping 轮，则启用 LLM 决策)
+        # 7) Use LLM to determine whether to continue strengthening (if it has reached the early_stopping round, enable LLM decision)
         if current_iteration < early_stopping:
-            # 强制继续
+            # Force to continue
             continue_flag = True
         else:
-            # 生成一个新的 prompt，让LLM比较初始和当前环境状态
+            # Generate a new prompt and let LLM compare the initial and current environment states
             if self.enhancement_mode == "topological":
                 manager_prompt_mode_part = f"We are specifically performing few-shot topological augmentation for label={self.target_label}."
             else:

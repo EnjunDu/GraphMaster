@@ -10,14 +10,14 @@ import logging
 
 class GraphEvaluationAgent:
     """
-    用于执行图评估任务的 Agent。
-    利用传入的 TextGenerationPipeline，根据初始环境报告和当前环境报告评估图增强的效果和判断是否收敛。
+    Agent for performing graph evaluation tasks.
+    Using the passed TextGenerationPipeline, it evaluates the effect of graph enhancement and determines whether it has converged based on the initial environment report and the current environment report.
     """
 
     def __init__(self, text_generation_pipeline: TextGenerationPipeline, max_new_tokens: int = 1024):
         """
-        :param text_generation_pipeline: 文本生成 pipeline（已加载好的 LLM）
-        :param max_new_tokens: 每次生成的最大 token 数
+        :param text_generation_pipeline: text generation pipeline (loaded LLM)
+        :param max_new_tokens: maximum number of tokens generated each time
         """
         self.text_generation = text_generation_pipeline
         self.max_new_tokens = max_new_tokens
@@ -32,42 +32,42 @@ class GraphEvaluationAgent:
                        perception_agent = None
                        ) -> str:
         """
-        执行图评估任务，通过比较各种环境报告，评估增强效果和判断是否收敛。
+        Perform graph evaluation tasks, evaluate the enhancement effect and judge whether it has converged by comparing various environment reports.
 
-        :param original_data_str: 本轮增强前的原始节点数据（JSON字符串）
-        :param generated_data_str: 增强后的图数据（JSON字符串）
-        :param initial_environment_report: 初始环境报告（项目开始时的）
-        :param current_environment_report: 当前环境报告（本轮增强前）
-        :param mode: 增强模式 ('semantic' 或 'topological')
-        :param target_label: 目标标签（当mode='topological'时）
-        :param perception_agent: PerceptionAgent实例，用于生成新的环境报告
-        :return: 评估结果（JSON字符串）
+        :param original_data_str: Original node data before this round of enhancement (JSON string)
+        :param generated_data_str: Enhanced graph data (JSON string)
+        :param initial_environment_report: Initial environment report (at the beginning of the project)
+        :param current_environment_report: Current environment report (before this round of enhancement)
+        :param mode: Enhancement mode ('semantic' or 'topological')
+        :param target_label: Target label (when mode='topological')
+        :param perception_agent: PerceptionAgent instance, used to generate a new environment report
+        :return: Evaluation result (JSON string)
         """
         main_logger = logging.getLogger("main_logger")
 
-        # 合并原始数据和新生成的数据，创建临时文件让PerceptionAgent分析
+        # Merge the original data and the newly generated data, creating a temporary file for PerceptionAgent to analyze
         enhanced_environment_report = ""
         if perception_agent:
             try:
-                # 合并数据（注意处理可能的格式问题）
+                # Merge data (be careful to handle possible formatting issues)
                 original_data = json.loads(original_data_str) if original_data_str else []
                 generated_data = json.loads(generated_data_str) if generated_data_str else []
 
-                # 如果原始数据不是列表，尝试将其转换为列表
+                # If the original data is not a list, try converting it to a list
                 if not isinstance(original_data, list):
                     original_data = [original_data]
                 if not isinstance(generated_data, list):
                     generated_data = [generated_data]
 
-                # 合并数据
+                # Merge data
                 combined_data = original_data + generated_data
 
-                # 写入临时文件
+                # Write to temporary file
                 with tempfile.NamedTemporaryFile(suffix='.json', mode='w+', delete=False) as tmp:
                     json.dump(combined_data, tmp, ensure_ascii=False, indent=2)
                     tmp_filename = tmp.name
 
-                # 使用PerceptionAgent生成增强后的环境报告
+                # Generate enhanced environment reports using PerceptionAgent
                 enhanced_environment_report = perception_agent.generate_environment_report(
                     require_label_distribution=True,
                     data_file=tmp_filename
@@ -76,7 +76,7 @@ class GraphEvaluationAgent:
                 main_logger.info(f"[GraphEvaluationAgent] Generated enhanced environment report based on combined data")
             except Exception as e:
                 main_logger.error(f"[GraphEvaluationAgent] Error generating enhanced environment report: {e}")
-                # 如果生成增强后环境报告失败，使用当前报告
+                # If the generation of the enhanced environment report fails, use the current report
                 enhanced_environment_report = current_environment_report
         else:
             main_logger.warning("[GraphEvaluationAgent] No perception_agent provided, skipping enhanced report generation")

@@ -20,11 +20,11 @@ os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 def main():
     main_logger, result_logger = setup_logging()
     parser = argparse.ArgumentParser(description="GraphMaster: A RAG-Based Multi-Agent Framework for Text-Attributed Graph Synthesis")
-    parser.add_argument('--gpu', type=str, default="3,4,5,6,7", help="Comma-separated list of GPU indices to be used")
-    parser.add_argument('--cache_dir', type=str, default="/home/daihengwei/EnjunDu/model", help="HF model cache directory")
+    parser.add_argument('--gpu', type=str, default="0,1,2,3,4,5,6,7", help="Comma-separated list of GPU indices to be used")
+    parser.add_argument('--cache_dir', type=str, default="../models", help="HF model cache directory")
     parser.add_argument('--max_tokens', type=int, default=9196, help="Max new tokens for generation")
     parser.add_argument('--max_iterations', type=int, default=100, help="Max iteration loops for enhancement-evaluation")
-    parser.add_argument('--data_file', type=str, default="./data/cora.json", help="Path to the input data file")
+    parser.add_argument('--data_file', type=str, default="../data/SubCora.json", help="Path to the input data file")
     parser.add_argument('--llm_model', type=str, default="QwQ", 
                         help="Available options: QwQ, Deepseek, Qwen (Qwen1.5-32B), LLaMA (Samantha-1.1-llama-33b), or custom path")
     parser.add_argument('--hf_token', type=str, default=None, 

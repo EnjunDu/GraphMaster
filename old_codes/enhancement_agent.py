@@ -8,14 +8,14 @@ import logging
 
 class GraphEnhancementAgent:
     """
-    用于执行图增强任务的 Agent。
-    利用传入的 TextGenerationPipeline，根据 Prompt 生成增强后的图数据（JSON格式）。
+    Agent for performing graph enhancement tasks.
+    Using the passed TextGenerationPipeline, generate enhanced graph data (JSON format) according to Prompt.
     """
 
     def __init__(self, text_generation_pipeline: TextGenerationPipeline, max_new_tokens: int = 1024):
         """
-        :param text_generation_pipeline: 文本生成 pipeline（已加载好的 LLM）
-        :param max_new_tokens: 每次生成的最大 token 数
+        :param text_generation_pipeline: text generation pipeline (loaded LLM)
+        :param max_new_tokens: maximum number of tokens generated each time
         """
         self.text_generation = text_generation_pipeline
         self.max_new_tokens = max_new_tokens
@@ -26,18 +26,18 @@ class GraphEnhancementAgent:
                       label_target_size: int = 0
                       ) -> str:
         """
-        执行图增强任务，返回增强后的图数据（JSON字符串）。
-        如果 mode='topological'，则在 prompt 中说明正在进行小样本标签增强。
+        Executes the graph enhancement task and returns the enhanced graph data (JSON string).
+        If mode='topological', the prompt will state that small sample label enhancement is in progress.
 
-        :param data_json_str: 输入的图数据（JSON字符串）
-        :param environment_state_str: 环境状态报告
-        :param mode: 增强模式，'semantic'或'topological'
-        :param target_label: topological模式下的目标标签
-        :param label_target_size: topological模式下的目标数量
-        :return: 增强后的图数据（JSON字符串）
+        :param data_json_str: Input graph data (JSON string)
+        :param environment_state_str: Environment state report
+        :param mode: Enhancement mode, 'semantic' or 'topological'
+        :param target_label: Target label in topological mode
+        :param label_target_size: Number of targets in topological mode
+        :return: Enhanced graph data (JSON string)
         """
         if mode == "topological" and target_label:
-            # 拓扑增强（原label模式）的提示
+            # Tips for topology enhancement (original label mode)
             prompt_for_enhance = f"""# Graph Data Augmentation Task: Topological Enhancement
 
         You are a Graph Data Enhancement Agent. We are focusing on label={target_label} because it is under-represented.
@@ -72,7 +72,7 @@ class GraphEnhancementAgent:
         and then the JSON data immediately. Nothing else.
         """
         elif mode == "semantic":
-            # 语义增强（原random模式）的 prompt
+            # Semantically enhanced (original random mode) prompt
             prompt_for_enhance = f"""# Graph Data Augmentation Task: Semantic Enhancement
 
 You are a Graph Data Enhancement Agent. You are tasked with performing semantic enhancement on graph data. The graph nodes are described by the following structure: {{node_id, label, text, neighbors, mask}}, where the `mask` field can be one of the following: **Train**, **Test**, or **Validation**.

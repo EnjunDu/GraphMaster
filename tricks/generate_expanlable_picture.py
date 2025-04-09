@@ -8,21 +8,21 @@ import matplotlib.gridspec as gridspec
 from matplotlib.colors import LinearSegmentedColormap
 import matplotlib as mpl
 
-# 在原有基础上整体调大字号
+# Increase the font size overall on the original basis
 plt.style.use('seaborn-v0_8-whitegrid')
 plt.rcParams['font.family'] = 'serif'
 plt.rcParams['font.serif'] = ['Times New Roman'] + plt.rcParams['font.serif']
-plt.rcParams['axes.labelsize'] = 15      # 原来是13
-plt.rcParams['axes.titlesize'] = 18      # 原来是16
-plt.rcParams['xtick.labelsize'] = 13     # 原来是11
-plt.rcParams['ytick.labelsize'] = 13     # 原来是11
+plt.rcParams['axes.labelsize'] = 15      # It turned out to be 13
+plt.rcParams['axes.titlesize'] = 18      # It turned out to be 16
+plt.rcParams['xtick.labelsize'] = 13     # It turned out to be 11
+plt.rcParams['ytick.labelsize'] = 13     # It turned out to be 11
 
-# 创建清新鲜明的配色方案
-colors = ['#55AAFF', '#FF9AA2', '#B5EAD7']  # 天蓝色, 淡粉色, 薄荷绿
+# Create a fresh, vibrant color scheme
+colors = ['#55AAFF', '#FF9AA2', '#B5EAD7']  # Sky blue, light pink, mint green
 pastel_purple = '#C5A3FF'
 light_blue = '#AADDFF'
 
-# 图1: 语义一致性分数分布图
+# Figure 1: Distribution of semantic consistency scores
 plt.figure(figsize=(9, 6))
 
 graphmaster_scores = np.array([
@@ -47,12 +47,12 @@ graphmaster_mean = np.mean(graphmaster_scores)
 mixed_llm_mean = np.mean(mixed_llm_scores)
 synthesis_llm_mean = np.mean(synthesis_llm_scores)
 
-# 设置精美的底色
+# Set a beautiful background
 ax = plt.gca()
 ax.set_facecolor('#F8F9FD')
 ax.patch.set_alpha(0.6)
 
-# 使用清新的渐变填充直方图
+# Fill the histogram with a refreshing gradient
 hist_gm = plt.hist(graphmaster_scores, bins=15, alpha=0.7, density=True,
                    label='GraphMaster', color=colors[0], edgecolor='white', linewidth=0.8)
 hist_mix = plt.hist(mixed_llm_scores, bins=15, alpha=0.65, density=True,
@@ -60,34 +60,34 @@ hist_mix = plt.hist(mixed_llm_scores, bins=15, alpha=0.65, density=True,
 hist_syn = plt.hist(synthesis_llm_scores, bins=15, alpha=0.65, density=True,
                     label='Synthesis-LLM', color=colors[2], edgecolor='white', linewidth=0.8)
 
-# 绘制均值线
+# Draw the mean line
 plt.axvline(graphmaster_mean, color=colors[0], linestyle='--', linewidth=2.5, alpha=0.9)
 plt.axvline(mixed_llm_mean, color=colors[1], linestyle='--', linewidth=2.5, alpha=0.9)
 plt.axvline(synthesis_llm_mean, color=colors[2], linestyle='--', linewidth=2.5, alpha=0.9)
 
-# 添加均值标签（字号调大）
+# Add mean label (larger font size)
 for value, color, y_pos in zip(
         [graphmaster_mean, mixed_llm_mean, synthesis_llm_mean],
         [colors[0], colors[1], colors[2]],
         [7.0, 7.5, 8.0]):
 
     plt.text(value + 0.01, y_pos, f'μ={value:.2f}',
-             color='#000000', fontsize=14, ha='left', va='center',  # 由12改成14
+             color='#000000', fontsize=14, ha='left', va='center',  # 12 -> 14
              fontweight='bold',
              bbox=dict(facecolor='white', alpha=0.8, edgecolor=color,
                        boxstyle="round,pad=0.3", linewidth=1.5))
 
-# 美化坐标轴标签和标题（字号均调大）
+# Beautify axis labels and titles (both font sizes are increased)
 plt.xlabel('Semantic Coherence Score', fontweight='bold', fontsize=16)  # 14 -> 16
 plt.ylabel('Density', fontweight='bold', fontsize=16)                  # 14 -> 16
 plt.title('Distribution of Semantic Coherence Scores',
           fontweight='bold', fontsize=20, pad=15)                      # 18 -> 20
 
-# 设置坐标轴范围
+# Set axis range
 plt.xlim(0.45, 1.0)
 plt.ylim(0, 25)
 
-# 添加图例
+# Add legend
 legend = plt.legend(frameon=True, loc='upper left', fontsize=14)  # 12 -> 14
 frame = legend.get_frame()
 frame.set_facecolor('#F8F9FD')
@@ -95,7 +95,7 @@ frame.set_edgecolor(pastel_purple)
 frame.set_linewidth(1.5)
 frame.set_alpha(0.95)
 
-# 添加注释（字号调大）
+# Add a comment (larger font size)
 plt.annotate('Superior Performance',
              xy=(graphmaster_mean, 7.0), xytext=(graphmaster_mean - 0.1, 5.0),
              arrowprops=dict(arrowstyle='->', color=pastel_purple, linewidth=2,
@@ -103,7 +103,7 @@ plt.annotate('Superior Performance',
              color='#000000', fontsize=14, fontweight='bold',  # 12 -> 14
              bbox=dict(boxstyle="round,pad=0.3", fc="white", ec=pastel_purple, alpha=0.8))
 
-# 添加边框
+# Add border
 for spine in plt.gca().spines.values():
     spine.set_edgecolor(pastel_purple)
     spine.set_linewidth(1.2)
@@ -115,7 +115,7 @@ plt.savefig('figure1_coherence_distribution.pdf', bbox_inches='tight', dpi=300)
 plt.close()
 
 
-# 图2: 相关性散点图
+# Figure 2: Correlation scatter plot
 plt.figure(figsize=(9, 6))
 
 human_ratings = [
@@ -141,29 +141,29 @@ ax = plt.gca()
 ax.set_facecolor('#F8F9FD')
 ax.patch.set_alpha(0.6)
 
-# 创建渐变色映射
+# Creating a gradient color map
 n_colors = 90
 cmap = LinearSegmentedColormap.from_list('custom_cmap', [light_blue, pastel_purple], N=n_colors)
 point_colors = np.linspace(0, 1, len(human_ratings))
 
-# 绘制散点图（具有渐变效果）
+# Draw a scatter plot (with gradient effect)
 scatter = plt.scatter(human_ratings, semantic_scores,
                       c=point_colors, cmap=cmap, s=80, alpha=0.8,
                       edgecolor='white', linewidth=0.8)
 
-# 回归线
+# regression line
 sns.regplot(x='Human Traceability Score', y='Semantic Coherence Score',
             data=corr_data, scatter=False,
             line_kws={'color': pastel_purple, 'linewidth': 3, 'alpha': 0.8})
 
-# 在文本框中添加相关性统计信息（字号调大）
+# Add relevance statistics in text box (larger font size)
 stats_text = f'Pearson r = {correlation:.2f}\np-value < 0.00001'
 text_box = dict(boxstyle='round,pad=0.6', facecolor='white', alpha=0.9,
                 edgecolor=pastel_purple, linewidth=1.5)
 plt.text(0.05, 0.15, stats_text, transform=plt.gca().transAxes, fontsize=15,  # 13 -> 15
          color='#000000', fontweight='bold', verticalalignment='bottom', bbox=text_box)
 
-# 轴标签和标题（字号调大）
+# Axis labels and titles (larger font size)
 plt.xlabel('Human Traceability Score', fontweight='bold', fontsize=16)  # 14 -> 16
 plt.ylabel('Semantic Coherence Score', fontweight='bold', fontsize=16)  # 14 -> 16
 plt.title('Correlation: Human Ratings vs. Semantic Coherence',
@@ -172,7 +172,7 @@ plt.title('Correlation: Human Ratings vs. Semantic Coherence',
 plt.xlim(0.85, 0.95)
 plt.ylim(0.80, 0.92)
 
-# 添加注释（字号调大）
+# Add a comment (larger font size)
 plt.annotate('Strong Positive\nCorrelation',
              xy=(0.91, 0.87), xytext=(0.93, 0.83),
              arrowprops=dict(arrowstyle='->', color=pastel_purple, linewidth=2,
@@ -180,7 +180,7 @@ plt.annotate('Strong Positive\nCorrelation',
              color='#000000', fontsize=14, fontweight='bold',  # 12 -> 14
              bbox=dict(boxstyle="round,pad=0.3", fc="white", ec=pastel_purple, alpha=0.8))
 
-# 边框
+# frame
 for spine in plt.gca().spines.values():
     spine.set_edgecolor(pastel_purple)
     spine.set_linewidth(1.2)
@@ -191,7 +191,7 @@ plt.tight_layout(pad=2.0)
 plt.savefig('figure2_correlation.pdf', bbox_inches='tight', dpi=300)
 plt.close()
 
-# 图3: 条形图比较
+# Figure 3: Bar chart comparison
 plt.figure(figsize=(10, 6))
 
 datasets = ['Cora', 'Citeseer', 'Wikics', 'History', 'Arxiv2023', 'Children']
@@ -218,7 +218,7 @@ bars2 = plt.bar(x, mixed_llm_by_dataset, width, label='Mixed-LLM',
 bars3 = plt.bar(x + width, synthesis_llm_by_dataset, width, label='Synthesis-LLM',
                 color=synthesis_colors, edgecolor='white', linewidth=1)
 
-# 顶部数值标签（字号调大）
+# Top value label (larger font size)
 for bar in bars1:
     height = bar.get_height()
     plt.text(bar.get_x() + bar.get_width()/2., height + 0.01,
@@ -237,14 +237,14 @@ for bar in bars3:
              f'{height:.2f}', ha='center', va='bottom', fontsize=12,  # 10 -> 12
              fontweight='bold', color='#555555')
 
-# 坐标轴与标题（字号调大）
+# Axes and titles (larger font size)
 plt.ylabel('Avg. Semantic Coherence Score', fontweight='bold', fontsize=16)  # 14 -> 16
 plt.title('Semantic Coherence Across Datasets', fontweight='bold', fontsize=20, pad=15)  # 18 -> 20
 
 plt.xticks(x, datasets, fontsize=14)
 plt.setp(plt.gca().get_xticklabels(), rotation=30, ha='right')
 
-# 阈值线标注（字号调大）
+# Threshold line annotation (larger font size)
 threshold = 0.7
 plt.axhline(y=threshold, color='#FF7BAC', linestyle='--', linewidth=2, alpha=0.8)
 plt.text(5.5, threshold + 0.01, 'Interpretability threshold',
@@ -253,7 +253,7 @@ plt.text(5.5, threshold + 0.01, 'Interpretability threshold',
          bbox=dict(facecolor='white', alpha=0.8, edgecolor='#FF7BAC',
                    boxstyle="round,pad=0.3", linewidth=1))
 
-# 图例（字号调大）
+# Legend (larger font size)
 legend = plt.legend(frameon=True, loc='upper right', fontsize=14)  # 12 -> 14
 frame = legend.get_frame()
 frame.set_facecolor('#F8F9FD')
@@ -261,7 +261,7 @@ frame.set_edgecolor(pastel_purple)
 frame.set_linewidth(1.5)
 frame.set_alpha(0.95)
 
-# 注释（字号调大）
+# Notes (larger font size)
 plt.annotate('GraphMaster consistently\noutperforms other models',
              xy=(3, 0.89), xytext=(3, 0.95),
              arrowprops=dict(arrowstyle='->', color='#000000', linewidth=2,

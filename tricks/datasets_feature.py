@@ -14,13 +14,13 @@ def load_graph_from_json(json_path):
     node_labels = {}
     node_masks = {}
     
-    # 添加节点及其属性
+    # Adding nodes and their attributes
     for node in data:
         G.add_node(node['node_id'])
         node_labels[node['node_id']] = node['label']
         node_masks[node['node_id']] = node['mask']
         
-        # 添加边
+        # Add edges
         for neighbor in node['neighbors']:
             G.add_edge(node['node_id'], neighbor)
     
@@ -29,15 +29,15 @@ def load_graph_from_json(json_path):
     return G
 
 def plot_degree_distribution(G_original, G_synthesized, dataset_name):
-    """生成度分布比较图，并保存为PDF文件"""
+    """Generate a degree distribution comparison graph and save it as a PDF file"""
     plt.figure(figsize=(10, 8))
-    fig = plt.gcf()  # 获取当前图像对象
+    fig = plt.gcf()  # Get the current image object
     
-    # 计算度分布
+    # Compute degree distribution
     degrees_original = [d for n, d in G_original.degree()]
     degrees_synthesized = [d for n, d in G_synthesized.degree()]
     
-    # 使用density=True绘制直方图以便于比较
+    # Use density=True to draw a histogram for easy comparison
     max_degree = max(max(degrees_original), max(degrees_synthesized))
     bins = np.logspace(0, np.log10(max_degree+1), 20)
     
@@ -52,7 +52,7 @@ def plot_degree_distribution(G_original, G_synthesized, dataset_name):
     plt.title(f'Degree Distribution Comparison: {dataset_name}', fontsize=32)
     plt.legend(fontsize=24)
     
-    # KS检验结果
+    # KS test results
     ks_stat, p_value = ks_2samp(degrees_original, degrees_synthesized)
     similarity = 1 - ks_stat
     
@@ -76,13 +76,13 @@ def plot_degree_distribution(G_original, G_synthesized, dataset_name):
 
 def plot_clustering_coefficient(G_original, G_synthesized, dataset_name):
     plt.figure(figsize=(10, 8))
-    fig = plt.gcf()  # 获取当前图像对象
+    fig = plt.gcf()  # Get the current image object
     
-    # 计算聚类系数
+    # Calculate the clustering coefficient
     cc_original = nx.clustering(G_original)
     cc_synthesized = nx.clustering(G_synthesized)
     
-    # 按度分组以便于可视化
+    # Group by degree for easier visualization
     cc_by_degree_orig = defaultdict(list)
     cc_by_degree_synth = defaultdict(list)
     
@@ -92,7 +92,7 @@ def plot_clustering_coefficient(G_original, G_synthesized, dataset_name):
     for node, degree in G_synthesized.degree():
         cc_by_degree_synth[degree].append(cc_synthesized[node])
     
-    # 计算每个度的平均聚类系数
+    # Calculate the average clustering coefficient for each degree
     x_orig, y_orig = [], []
     x_synth, y_synth = [], []
     
@@ -106,7 +106,7 @@ def plot_clustering_coefficient(G_original, G_synthesized, dataset_name):
             x_synth.append(degree)
             y_synth.append(np.mean(cc_list))
     
-    # 按度排序
+    # Sort by degree
     orig_sorted = sorted(zip(x_orig, y_orig))
     synth_sorted = sorted(zip(x_synth, y_synth))
     
@@ -115,7 +115,7 @@ def plot_clustering_coefficient(G_original, G_synthesized, dataset_name):
     x_synth = [x for x, y in synth_sorted]
     y_synth = [y for x, y in synth_sorted]
     
-    # 绘制聚类系数趋势图
+    # Draw a trend graph of the clustering coefficient
     plt.loglog(x_orig, y_orig, 'o-', label='Original Graph', color='blue', markersize=5, alpha=0.7)
     plt.loglog(x_synth, y_synth, 'o-', label='Synthesized Graph', color='red', markersize=5, alpha=0.7)
     
@@ -124,7 +124,7 @@ def plot_clustering_coefficient(G_original, G_synthesized, dataset_name):
     plt.title(f'Clustering Coefficient vs. Degree: {dataset_name}', fontsize=32)
     plt.legend(fontsize=24)
     
-    # 计算相似性度量
+    # Computing similarity measures
     common_degrees = set(x_orig).intersection(set(x_synth))
     mse = 0
     if common_degrees:
@@ -156,9 +156,9 @@ def plot_clustering_coefficient(G_original, G_synthesized, dataset_name):
 
 def plot_label_homogeneity(G_original, G_synthesized, dataset_name):
     plt.figure(figsize=(12, 10))
-    fig = plt.gcf()  # 获取当前图像对象
+    fig = plt.gcf()  # Get the current image object
     
-    # 获取所有唯一标签
+    # Get all unique tags
     all_labels = set()
     for _, label in nx.get_node_attributes(G_original, 'label').items():
         all_labels.add(label)
@@ -166,12 +166,12 @@ def plot_label_homogeneity(G_original, G_synthesized, dataset_name):
         all_labels.add(label)
     all_labels = sorted(list(all_labels))
     
-    # 计算标签之间连接矩阵的函数
+    # Function to calculate the connection matrix between labels
     def compute_label_connections(G):
         label_matrix = np.zeros((len(all_labels), len(all_labels)))
         
         for u, v in G.edges():
-            if u in G.nodes and v in G.nodes:  # 确保节点存在
+            if u in G.nodes and v in G.nodes:  # Make sure the node exists
                 u_label = G.nodes[u].get('label')
                 v_label = G.nodes[v].get('label')
                 
@@ -179,33 +179,33 @@ def plot_label_homogeneity(G_original, G_synthesized, dataset_name):
                     i = all_labels.index(u_label)
                     j = all_labels.index(v_label)
                     label_matrix[i, j] += 1
-                    label_matrix[j, i] += 1  # 无向图
+                    label_matrix[j, i] += 1  # undirected graph
         
-        # 按行和归一化以获得条件概率
+        # Sum normalized row-wise to get conditional probabilities
         row_sums = label_matrix.sum(axis=1, keepdims=True)
-        row_sums[row_sums == 0] = 1  # 避免除零
+        row_sums[row_sums == 0] = 1  # avoid division by zero
         label_matrix = label_matrix / row_sums
         
         return label_matrix
     
-    # 计算标签同质性矩阵
+    # Compute label homogeneity matrix
     label_matrix_orig = compute_label_connections(G_original)
     label_matrix_synth = compute_label_connections(G_synthesized)
     
-    # 计算矩阵差值
+    # Compute matrix difference
     diff_matrix = np.abs(label_matrix_orig - label_matrix_synth)
     
-    # 绘制差值热力图
+    # Draw a difference heat map
     ax = sns.heatmap(diff_matrix, annot=False, cmap='Blues',
                      cbar_kws={'label': 'Absolute Difference in Connection Probability'})
     plt.title(f'Label Homogeneity Difference: {dataset_name}', fontsize=32)
     plt.xlabel('Node Label', fontsize=28)
     plt.ylabel('Node Label', fontsize=28)
     
-    # 计算并显示同质性相似性度量
+    # Compute and display homophily similarity measures
     similarity = 1 - np.mean(diff_matrix)
     
-    # 将相似性文本框移动到图表左上方，以免与标题冲突
+    # Move the Similarity text box to the top left of the chart so it doesn't conflict with the title
     fig.text(0.1, 0.85, f'Homogeneity Similarity: {similarity:.3f}', fontsize=12,
              bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
     
@@ -219,7 +219,7 @@ def plot_label_homogeneity(G_original, G_synthesized, dataset_name):
     return similarity
 
 def analyze_graphs(G_original, G_synthesized, dataset_name):
-    """运行三个分析，并报告总体相似性"""
+    """Run three analyses and report the overall similarity"""
     deg_sim = plot_degree_distribution(G_original, G_synthesized, dataset_name)
     clust_sim = plot_clustering_coefficient(G_original, G_synthesized, dataset_name)
     label_sim = plot_label_homogeneity(G_original, G_synthesized, dataset_name)
@@ -234,7 +234,7 @@ def analyze_graphs(G_original, G_synthesized, dataset_name):
         "overall_structural_fidelity": overall_sim
     }
 
-# 示例用法：
+# Example usage:
 # G_original = load_graph_from_json('original_graph.json')
 # G_synthesized = load_graph_from_json('synthesized_graph.json')
 # metrics = analyze_graphs(G_original, G_synthesized, "Cora")

@@ -34,24 +34,24 @@ def main():
                         help="Desired total number of data for that label after augmentation (if mode is 'topological')")
     args = parser.parse_args()
 
-    # ========== 1. 设置环境变量与设备 ==========
+    # ========== 1. Setting environment variables and devices ==========
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
     os.environ["HF_HOME"] = args.cache_dir
 
-    # ========== 2. 加载大模型与 pipeline ==========
+    # ========== 2. Loading large models and pipelines ==========
     ensure_model_downloaded(args.model_name, args.cache_dir)
     main_logger.info("[main] Loading model and tokenizer...")
     tokenizer = AutoTokenizer.from_pretrained(args.model_name, cache_dir=args.cache_dir)
     model = AutoModelForCausalLM.from_pretrained(
         args.model_name,
         cache_dir=args.cache_dir,
-        device_map="auto",  # 自动分配GPU
+        device_map="auto",  # Automatically allocate GPU
         torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32
     )
     text_generation_pipeline = TextGenerationPipeline(model=model, tokenizer=tokenizer)
     main_logger.info("[main] Model and tokenizer loaded successfully.")
 
-    # ========== 3. 初始化各 Agent ==========
+    # ========== 3. Initialize each Agent ==========
     main_logger.info("[main] Initializing PerceptionAgent...")
     perception_agent = GraphPerceptionAgent(
         data_file=args.data_file,
@@ -67,7 +67,7 @@ def main():
         max_new_tokens=args.max_tokens
     )
 
-    # ========== 4. 初始化 ManagerAgent ==========
+    # ========== 4. Initialize ManagerAgent ==========
     main_logger.info(f"[main] Initializing ManagerAgent with enhancement_mode={args.enhancement_mode}...")
     manager_agent = ManagerAgent(
         text_generation_pipeline=text_generation_pipeline,
@@ -76,16 +76,15 @@ def main():
         evaluation_agent=evaluation_agent,
         data_file=args.data_file,
         visualize_sampling=args.visualize_sampling,
-        enhancement_mode=args.enhancement_mode,  # 可能为None，表示自动决定
+        enhancement_mode=args.enhancement_mode,  # May be None, indicating automatic decision
         target_label=args.target_label,
         label_target_size=args.label_target_size
     )
 
-    # ========== 5. 迭代增强-评估 ==========
+    # ========== 5. Iterative Enhancement-Evaluation ==========
     iteration = 0
     continue_flag = True
 
-    # 创建副本文件 data_file_enhanced.json
     # Create a copy file data_file_enhanced.json
     data_file_enhanced = args.data_file.replace(".json", "_enhanced.json")
 
@@ -99,9 +98,9 @@ def main():
 
 
     while continue_flag and iteration < args.max_iterations:
-        output_data = []  # 用于存储每轮增强的结果
+        output_data = []  # Used to store the results of each round of enhancement
         main_logger.info(f"\n[main] --- Iteration {iteration + 1} ---")
-        # 每轮开始时记录当前的增强模式
+        # At the beginning of each round, the current reinforcement mode is recorded
         current_mode = manager_agent.enhancement_mode
         main_logger.info(f"[main] Current enhancement mode: {current_mode}")
 
@@ -110,15 +109,15 @@ def main():
             main_logger.info("[main] No valid enhancement data obtained. Stopping iterations.")
             break
 
-        # 调用数据清洗功能：转换混乱 JSON 为标准格式
+        # Call the data cleaning function: convert the messy JSON to a standard format
         cleaned_data_str = reformat_json_str(evaluated_data_str)
         main_logger.info(f"[main] Cleaned JSON data at iteration {iteration + 1}:")
         main_logger.info(cleaned_data_str)
 
-        # 将本轮数据转换为字典，并追加到 output_data 列表
+        # Convert this round of data into a dictionary and append it to the output_data list
         current_result = {"iteration": iteration + 1, "enhanced_data": cleaned_data_str, "mode": current_mode}
 
-        # 更新 enhanced 数据
+        # Update enhanced data
         update_enhanced_data(data_file_enhanced, cleaned_data_str)
 
         result_logger.info(f"****************{iteration+1}****************, "
@@ -136,8 +135,8 @@ def main():
 
 def ensure_model_downloaded(model_name, cache_dir):
     """
-    检查指定的模型是否已存在于 cache_dir 中，
-    如果不存在，则自动下载。
+    Checks if the specified model already exists in cache_dir, 
+    and automatically downloads it if it does not exist.
     """
     model_path = os.path.join(cache_dir, "models--" + model_name.replace("/", "--"))
     if not os.path.exists(model_path):
@@ -152,10 +151,10 @@ def ensure_model_downloaded(model_name, cache_dir):
 
 def create_enhanced_file(data_file, enhanced_file):
     """
-    创建数据文件的副本，并保存为 enhanced_file。
+    Create a copy of the data file and save it as enhanced_file.
     """
     if not os.path.exists(data_file):
-        logging.error(f"[create_enhanced_file] Error: {data_file} 文件不存在！")
+        logging.error(f"[create_enhanced_file] Error: {data_file} File does not exist!")
         return
 
     with open(data_file, 'r', encoding='utf-8') as file:
@@ -166,7 +165,7 @@ def create_enhanced_file(data_file, enhanced_file):
 
 def update_enhanced_data(enhanced_file, new_data_str):
     """
-    更新 enhanced 数据，将新的增强数据保存到 enhanced_file 文件。
+    Update enhanced data and save the new enhanced data to enhanced_file.
     """
     try:
         with open(enhanced_file, 'r', encoding='utf-8') as file:
@@ -181,12 +180,12 @@ def update_enhanced_data(enhanced_file, new_data_str):
         existing_node = next((node for node in enhanced_data if node["node_id"] == node_id), None)
 
         if existing_node:
-            # 如果节点已经存在，则替换
+            # If the node already exists, replace it
             existing_node.update(item)
         else:
-            # 如果是新节点，分配一个新的 node_id
+            # If it is a new node, assign a new node_id
             last_node_id = enhanced_data[-1]["node_id"] if enhanced_data else 0
-            new_node_id = (int(last_node_id) + 1)  # 分配新的 node_id
+            new_node_id = (int(last_node_id) + 1)  # Assign a new node_id
             item["node_id"] = new_node_id
             enhanced_data.append(item)
 
@@ -195,41 +194,41 @@ def update_enhanced_data(enhanced_file, new_data_str):
 
 def fix_messy_json(content):
     """
-    修正并解析大模型生成的混乱 JSON，确保提取 `"here are the generated datasets:"` 之后的 **纯 JSON**。
+    Fixed and parsed the messy JSON generated by large models, making sure to extract the **pure JSON** after `"here are the generated datasets:"`.
     """
-    # **1. 截取 `"here are the generated datasets:"` 之后的文本**
+    # **1. Extract the text after `"here are the generated datasets:"`**
     flag = "here are the generated datasets:"
     idx = content.lower().find(flag.lower())
-    main_logger = logging.getLogger("main_logger")  # 获取 main_logger
+    main_logger = logging.getLogger("main_logger")  # Get main_logger
     if idx == -1:
         main_logger.error("[fix_messy_json] Error: 无法找到 'here are the generated datasets:' 标识，返回空数据。")
         return []
 
-    content = content[idx + len(flag):].strip()  # 获取标识后面的内容
+    content = content[idx + len(flag):].strip()  # Get the content behind the logo
 
-    # **2. 只保留 `{}` 之间的纯 JSON**
-    json_pattern = r"\[\s*{.*?}\s*\]"  # 匹配 `[ {...} ]` 形式的 JSON
+    # **2. Keep only pure JSON between `{}`**
+    json_pattern = r"\[\s*{.*?}\s*\]"  # Matches JSON of the form `[{...}]`
     match = re.search(json_pattern, content, re.DOTALL)
 
     if not match:
-        main_logger.error("[fix_messy_json] Error: 未能匹配有效 JSON 结构，返回空数据。")
+        main_logger.error("[fix_messy_json] Error: Failed to match the valid JSON structure and returned empty data.")
         return []
 
     json_str = match.group(0).strip()
 
-    # **3. 确保 JSON 解析成功**
+    # **3. Ensure JSON parsing is successful**
     try:
         json_data = json.loads(json_str)
         return json_data
     except json.JSONDecodeError as e:
-        main_logger.error(f"[fix_messy_json] JSON 解析失败: {e}")
-        main_logger.error(f"解析失败的 JSON 片段: {repr(json_str)}")
+        main_logger.error(f"[fix_messy_json] JSON parsing failed: {e}")
+        main_logger.error(f"JSON fragment where parsing failed: {repr(json_str)}")
         return []
 
 
 def reformat_json_str(content):
     """
-    将混乱的 JSON 字符串转换为标准格式字符串。
+    Converts a garbled JSON string to a standard format string.
     """
     objs = fix_messy_json(content)
     return json.dumps(objs, ensure_ascii=False, indent=4)
@@ -249,7 +248,7 @@ def setup_logging():
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
     main_logger.addHandler(main_handler)
-    main_logger.addHandler(console_handler)  # 添加终端输出
+    main_logger.addHandler(console_handler)  # Add terminal output
 
     result_logger = logging.getLogger("result_logger")
     result_logger.setLevel(logging.INFO)
@@ -260,7 +259,7 @@ def setup_logging():
     result_console_handler = logging.StreamHandler()
     result_console_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
     result_logger.addHandler(result_handler)
-    result_logger.addHandler(result_console_handler)  # 添加终端输出
+    result_logger.addHandler(result_console_handler)  # Add terminal output
 
     return main_logger, result_logger
 
