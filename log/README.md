@@ -1,0 +1,1 @@
+**This folder is used to store logs generated when the code is running.**
