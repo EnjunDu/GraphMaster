@@ -3,8 +3,9 @@
 
 
 <p align="center">
-<img src=tricks\GraphMaster.png alt="GraphMaster" />
+<img src=tricks\GraphMaster.png alt="GraphMaster" width="40%" />
 </p>
+
 
 GraphMaster is a novel multi-agent system for **graph data enhancement**, built upon the **Retrieval-Augmented Generation (RAG)** paradigm and powered by **Large Language Models (LLMs)**. It is designed for few-shot or low-resource graph learning tasks, where both **semantic diversity** and **structural quality** are critical.
 
