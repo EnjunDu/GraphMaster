@@ -16,7 +16,7 @@ GraphMaster is a novel multi-agent system for **graph data enhancement**, built 
 - **Semantic & Topological Modes** for diversified and structure-aware node generation.
 - **Auto-Adaptive Objective Weights** across semantic, structural, and label balance metrics.
 - **Plug-and-Play LLMs**: Easily switch between Qwen, Deepseek, LLaMA, or any HF-supported model.
-- **Data-Limited Datasets**: For more details, please refer [another README](./data/README.md).
+- **Data-Limited Datasets**: For more details, please refer [Dataset_Creation README](./data/README.md).
 
 ## 🧠 Architecture
 
@@ -105,6 +105,10 @@ python main.py \
 - Visualizations:
   - `adaptive_weights_evolution.png`
   - `label_distribution_change.png`
+
+## Verification
+
+For Verification, please refer to [Verification_README](./Verification/README.md) 
 
 ## 🤖 Agent Highlights
 
