@@ -111,6 +111,10 @@ class GraphEvaluationAgent:
         # Send prompt to LLM
         raw_output = self._call_generation(prompt_for_evaluation, int(self.max_new_tokens * 1.5))
         
+        # Log raw output for debugging
+        main_logger.info(f"[GraphEvaluationAgent] Raw LLM output length: {len(raw_output)}")
+        main_logger.info(f"[GraphEvaluationAgent] Raw output preview (first 500 chars):\n{raw_output[:500]}")
+        
         # Extract evaluated JSON and quality scores
         splitted_flag = "here are the generated datasets:"
         evaluated_json_str = self._extract_after_flag(raw_output, splitted_flag)
@@ -181,9 +185,20 @@ Only keep nodes with quality scores above threshold ({self.quality_threshold}).
 
 If you find any generated data unreasonable, you should remove it.
 
-When providing the final answer, include:
-1. First say "Quality Scores:" and provide scores for each node
-2. Then say "here are the generated datasets:" and output the JSON data immediately.
+CRITICAL OUTPUT FORMAT:
+- You MUST output valid JSON starting with [ and ending with ]
+- Do NOT include explanations before or after the JSON
+- Do NOT wrap JSON in markdown code blocks
+- Start with "Quality Scores:" section FIRST
+- Then say "Here are the generated datasets:" followed immediately by the JSON array
+
+Example format:
+Quality Scores:
+new_node_1: 8.5
+new_node_2: 7.2
+
+Here are the generated datasets:
+[{{"node_id": "new_node_1", ...}}]
 """
         else:  # mode == "semantic"
             prompt = f"""# Graph Data Evaluation Task: Semantic Enhancement
@@ -222,9 +237,20 @@ Only keep nodes with quality scores above threshold ({self.quality_threshold}).
 
 If you find any generated data unreasonable or detrimental to graph quality, you should remove it.
 
-When providing the final answer, include:
-1. First say "Quality Scores:" and provide scores for each node
-2. Then say "here are the generated datasets:" and output the JSON data immediately.
+CRITICAL OUTPUT FORMAT:
+- You MUST output valid JSON starting with [ and ending with ]
+- Do NOT include explanations before or after the JSON
+- Do NOT wrap JSON in markdown code blocks
+- Start with "Quality Scores:" section FIRST
+- Then say "Here are the generated datasets:" followed immediately by the JSON array
+
+Example format:
+Quality Scores:
+new_node_1: 8.5
+new_node_2: 7.2
+
+Here are the generated datasets:
+[{{"node_id": "new_node_1", ...}}]
 """
         return prompt
 
@@ -243,8 +269,8 @@ When providing the final answer, include:
             scores_section = raw_output[quality_idx:datasets_idx].strip()
             
             # Parse scores - looking for patterns like "new_node 1: 8.5" or similar
-            pattern = r"(new_node\s*\d+|node\s*\d+):\s*(\d+\.?\d*)"
-            matches = re.findall(pattern, scores_section)
+            pattern = r"(new_node[_\s]*\d+|node[_\s]*\d+):\s*(\d+\.?\d*)"
+            matches = re.findall(pattern, scores_section, re.IGNORECASE)
             
             for node_id, score in matches:
                 quality_scores[node_id.strip()] = float(score)
@@ -361,12 +387,16 @@ Your response should be ONLY the JSON with no additional text.
 
         def generate_output():
             try:
+                # **修复：添加必要参数确保生成新内容**
                 output = self.text_generation(
                     prompt,
                     max_new_tokens=max_tokens,
                     do_sample=True,
                     temperature=0.7,
-                    top_p=0.90
+                    top_p=0.90,
+                    num_return_sequences=1,
+                    pad_token_id=self.text_generation.tokenizer.eos_token_id,
+                    eos_token_id=self.text_generation.tokenizer.eos_token_id
                 )
                 result_dict["output"] = output[0]["generated_text"]
             except Exception as e:
@@ -376,21 +406,96 @@ Your response should be ONLY the JSON with no additional text.
         gen_thread = threading.Thread(target=generate_output)
         gen_thread.start()
 
-        while gen_thread.is_alive():
-            time.sleep(0.5)
-        gen_thread.join()
+        # 增加超时时间
+        timeout = 600  # 10 minutes for evaluation
+        gen_thread.join(timeout=timeout)
+        
+        if gen_thread.is_alive():
+            main_logger.error(f"[GraphEvaluationAgent] Text generation timed out after {timeout} seconds")
+            return "[]"
 
         if "error" in error_dict:
             main_logger.error(f"[GraphEvaluationAgent] Error during text generation: {error_dict['error']}")
-            return "Error generating evaluation. Check logs for details."
+            import traceback
+            main_logger.error(f"[GraphEvaluationAgent] Traceback:\n{traceback.format_exc()}")
+            return "[]"
 
-        return result_dict.get("output", "").strip()
+        full_output = result_dict.get("output", "").strip()
+        
+        if not full_output:
+            main_logger.error("[GraphEvaluationAgent] LLM returned empty output")
+            return "[]"
+        
+        # **关键：去除 prompt 前缀**
+        if full_output.startswith(prompt):
+            generated_only = full_output[len(prompt):].strip()
+            main_logger.info(f"[GraphEvaluationAgent] Removed prompt prefix, generated length: {len(generated_only)}")
+            main_logger.info(f"[GraphEvaluationAgent] Generated preview (first 500 chars):\n{generated_only[:500]}")
+            return generated_only
+        else:
+            main_logger.info(f"[GraphEvaluationAgent] Full output length: {len(full_output)}")
+            main_logger.info(f"[GraphEvaluationAgent] Output preview (first 500 chars):\n{full_output[:500]}")
+            return full_output
 
     def _extract_after_flag(self, text: str, flag: str) -> str:
         """
-        Extracts content after a specified flag in the text.
+        Extract JSON-like content from the LLM output.
         """
-        idx = text.lower().find(flag.lower())
-        if idx == -1:
-            return ""
-        return text[idx + len(flag):].strip()
+        logger = logging.getLogger("main_logger")
+
+        if not text or not text.strip():
+            logger.error("[GraphEvaluationAgent] Empty or whitespace-only input")
+            return "[]"
+
+        # Log input
+        logger.info(f"[GraphEvaluationAgent] _extract_after_flag input length: {len(text)}")
+        logger.info(f"[GraphEvaluationAgent] Input preview (first 300 chars): {text[:300]}")
+        
+        # Convert to lowercase for case-insensitive matching
+        text_lower = text.lower()
+        flag_lower = flag.lower()
+        
+        # Try to find content after flag
+        candidate = text
+        if flag_lower in text_lower:
+            idx = text_lower.find(flag_lower)
+            candidate = text[idx + len(flag):].strip()
+            logger.info(f"[GraphEvaluationAgent] Found flag, content after: {len(candidate)} chars")
+        else:
+            logger.warning(f"[GraphEvaluationAgent] Flag '{flag}' not found, using full text")
+        
+        # Remove markdown code blocks
+        if candidate.startswith("```"):
+            lines = candidate.split('\n')
+            if lines[0].strip().startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            candidate = '\n'.join(lines).strip()
+            logger.info(f"[GraphEvaluationAgent] Removed markdown, length: {len(candidate)}")
+        
+        # Find JSON array boundaries
+        start = candidate.find("[")
+        end = candidate.rfind("]")
+        
+        if start == -1 or end == -1 or end <= start:
+            logger.error("[GraphEvaluationAgent] Could not find valid JSON array")
+            logger.error(f"[GraphEvaluationAgent] start={start}, end={end}")
+            logger.error(f"[GraphEvaluationAgent] Content (first 500 chars): {candidate[:500]}")
+            return "[]"
+        
+        json_str = candidate[start:end + 1]
+        logger.info(f"[GraphEvaluationAgent] Extracted JSON length: {len(json_str)}")
+        
+        # Validate JSON
+        try:
+            parsed = json.loads(json_str)
+            if not isinstance(parsed, list):
+                logger.error(f"[GraphEvaluationAgent] Parsed JSON is not a list: {type(parsed)}")
+                return "[]"
+            logger.info(f"[GraphEvaluationAgent] Successfully parsed JSON with {len(parsed)} items")
+            return json_str
+        except json.JSONDecodeError as e:
+            logger.error(f"[GraphEvaluationAgent] JSON parsing failed: {e}")
+            logger.error(f"[GraphEvaluationAgent] Problematic JSON (first 500 chars): {json_str[:500]}")
+            return "[]"
