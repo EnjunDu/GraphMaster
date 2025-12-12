@@ -32,19 +32,16 @@ class GraphEnhancementAgent:
         """
         main_logger = logging.getLogger("main_logger")
         
-        # Create prompt based on mode
         if mode == "topological" and target_label:
             prompt_for_enhance = self._create_topological_enhancement_prompt(
                 data_json_str, environment_state_str, target_label, label_target_size)
-        else:  # mode == "semantic"
+        else:
             prompt_for_enhance = self._create_semantic_enhancement_prompt(
                 data_json_str, environment_state_str)
 
         main_logger.info(f"[GraphEnhancementAgent] LLM begin to enhance the given graph data with mode={mode}.")
         
-        # **Generate enhanced data using LLM**
         try:
-            # _call_generation already returns content without the prompt
             raw_output = self._call_generation(prompt_for_enhance, self.max_new_tokens)
             
             main_logger.info(f"[GraphEnhancementAgent] Generated output length: {len(raw_output)}")
@@ -56,16 +53,13 @@ class GraphEnhancementAgent:
             main_logger.error(f"[GraphEnhancementAgent] Traceback:\n{traceback.format_exc()}")
             return "[]"
         
-        # Check if raw_output is valid
         if not raw_output or raw_output.strip() == "":
             main_logger.error(f"[GraphEnhancementAgent] LLM returned empty response")
             return "[]"
         
-        # Extract JSON from LLM output
         splitted_flag = "here are the generated datasets:"
         enhanced_json_str = self._extract_after_flag(raw_output, splitted_flag)
         
-        # 添加提取结果日志
         main_logger.info(f"[GraphEnhancementAgent] Extracted JSON length: {len(enhanced_json_str)}")
         if enhanced_json_str and enhanced_json_str != "[]":
             main_logger.info(f"[GraphEnhancementAgent] Extracted JSON (first 500 chars):\n{enhanced_json_str[:500]}")
@@ -74,23 +68,17 @@ class GraphEnhancementAgent:
             main_logger.warning("[GraphEnhancementAgent] Warning: No valid JSON data extracted from LLM output.")
             return "[]"
         
-        # Postprocess the enhanced data
         try:
-            # Parse the enhanced data
             enhanced_data = json.loads(enhanced_json_str)
             
-            # Validate that we got actual data, not placeholder
             if isinstance(enhanced_data, list) and len(enhanced_data) > 0:
-                # Check if first node has placeholder values
                 first_node = enhanced_data[0]
                 if first_node.get("text") == "...":
                     main_logger.warning("[GraphEnhancementAgent] LLM returned placeholder data, not actual content")
                     return "[]"
             
-            # Apply mode-specific edge probability model
             enhanced_data = self._apply_edge_probability_model(enhanced_data, data_json_str, mode)
             
-            # Convert back to string
             enhanced_json_str = json.dumps(enhanced_data, ensure_ascii=False, indent=2)
         except json.JSONDecodeError as e:
             main_logger.error(f"[GraphEnhancementAgent] Error parsing enhanced data: {e}")
@@ -181,16 +169,11 @@ Here are the generated datasets:"""
         return prompt
 
     def _call_generation(self, prompt, max_new_tokens):
-        """
-        Call the text generation pipeline with timeout protection
-        """
-        main_logger = logging.getLogger("main_logger")
         result = [None]
         exception = [None]
         
         def target():
             try:
-                # **不使用 return_full_text 参数**
                 outputs = self.text_generation(
                     prompt,
                     max_new_tokens=max_new_tokens,
@@ -206,119 +189,137 @@ Here are the generated datasets:"""
         
         thread = threading.Thread(target=target)
         thread.start()
-        thread.join(timeout=300)  # 5 minutes timeout
+        thread.join(timeout=300)
         
         if thread.is_alive():
-            main_logger.error("[GraphEnhancementAgent] LLM generation timed out after 300 seconds")
+            logging.getLogger("main_logger").error("[GraphEnhancementAgent] LLM generation timed out after 300 seconds")
             return ""
         
         if exception[0]:
-            main_logger.error(f"[GraphEnhancementAgent] LLM generation failed: {exception[0]}")
+            logging.getLogger("main_logger").error(f"[GraphEnhancementAgent] LLM generation failed: {exception[0]}")
             return ""
         
         if result[0] is None or len(result[0]) == 0:
-            main_logger.error("[GraphEnhancementAgent] LLM returned no output")
+            logging.getLogger("main_logger").error("[GraphEnhancementAgent] LLM returned no output")
             return ""
         
-        # **手动提取生成的文本**
         full_output = result[0][0]['generated_text']
         
-        # **关键：去除提示词部分**
-        # 如果输出包含完整提示词，则去除
         if full_output.startswith(prompt):
-            generated_only = full_output[len(prompt):].strip()
-            main_logger.info(f"[GraphEnhancementAgent] Removed prompt prefix, generated text length: {len(generated_only)}")
-            return generated_only
+            return full_output[len(prompt):].strip()
         else:
-            # 如果不是以提示词开头，返回完整输出（可能 pipeline 已经去除了）
-            main_logger.info(f"[GraphEnhancementAgent] Full output length: {len(full_output)}")
             return full_output
 
     def _extract_after_flag(self, text, flag):
-        """
-        Extracts JSON content after a specific flag in the text.
-        """
         main_logger = logging.getLogger("main_logger")
         
-        # Convert to lowercase for case-insensitive matching
         text_lower = text.lower()
         flag_lower = flag.lower()
         
+        candidate = text
         if flag_lower in text_lower:
             idx = text_lower.find(flag_lower)
-            after_flag = text[idx + len(flag):].strip()
-            
-            # Try to find the start of JSON array
-            json_start = after_flag.find('[')
-            if json_start != -1:
-                after_flag = after_flag[json_start:]
-                
-                # Try to find the matching closing bracket
-                try:
-                    # Use a simple bracket counting method
-                    bracket_count = 0
-                    for i, char in enumerate(after_flag):
-                        if char == '[':
-                            bracket_count += 1
-                        elif char == ']':
-                            bracket_count -= 1
-                            if bracket_count == 0:
-                                return after_flag[:i+1]
-                    
-                    # If we didn't find a matching bracket, return everything
-                    return after_flag
-                except Exception as e:
-                    main_logger.warning(f"[GraphEnhancementAgent] Error finding JSON end: {e}")
-                    return after_flag
-            else:
-                return after_flag
+            candidate = text[idx + len(flag):].strip()
         else:
-            # If flag not found, try to extract JSON directly
-            json_start = text.find('[')
-            if json_start != -1:
-                return text[json_start:]
-            return text
+            main_logger.warning(f"[GraphEnhancementAgent] Flag '{flag}' not found, using full text")
+        
+        json_start = candidate.find('[')
+        if json_start == -1:
+            main_logger.error("[GraphEnhancementAgent] No JSON array start '[' found")
+            return "[]"
+        
+        candidate = candidate[json_start:]
+        
+        bracket_count = 0
+        in_string = False
+        escape_next = False
+        json_end = -1
+        
+        for i, char in enumerate(candidate):
+            if escape_next:
+                escape_next = False
+                continue
+                
+            if char == '\\':
+                escape_next = True
+                continue
+                
+            if char == '"' and not escape_next:
+                in_string = not in_string
+                continue
+                
+            if not in_string:
+                if char == '[':
+                    bracket_count += 1
+                elif char == ']':
+                    bracket_count -= 1
+                    if bracket_count == 0:
+                        json_end = i
+                        break
+        
+        if json_end != -1:
+            json_str = candidate[:json_end + 1]
+            
+            try:
+                parsed = json.loads(json_str)
+                if isinstance(parsed, list):
+                    return json_str
+                else:
+                    main_logger.error(f"[GraphEnhancementAgent] Parsed result is not a list: {type(parsed)}")
+                    return "[]"
+            except json.JSONDecodeError:
+                pass
+        
+        object_pattern = r'\{[^{}]*"node_id"[^{}]*"label"[^{}]*"text"[^{}]*"neighbors"[^{}]*"mask"[^{}]*\}'
+        matches = list(re.finditer(object_pattern, candidate, re.DOTALL))
+        
+        if matches:
+            last_match_end = matches[-1].end()
+            repaired_json = candidate[:last_match_end].strip()
+            
+            if repaired_json.endswith(','):
+                repaired_json = repaired_json[:-1]
+            
+            if not repaired_json.endswith(']'):
+                repaired_json += '\n]'
+            
+            try:
+                parsed = json.loads(repaired_json)
+                if isinstance(parsed, list):
+                    return repaired_json
+            except json.JSONDecodeError as e:
+                main_logger.error(f"[GraphEnhancementAgent] Repair attempt failed: {e}")
+        
+        return "[]"
 
     def _apply_edge_probability_model(self, enhanced_data, original_data_str, mode):
-        """
-        Apply edge probability model to adjust neighbor connections.
-        """
         main_logger = logging.getLogger("main_logger")
         
         try:
-            # Parse original data to get existing nodes
             original_data = json.loads(original_data_str)
             existing_node_ids = {node['node_id'] for node in original_data}
             
-            # Calculate edge statistics from original data
             total_edges = sum(len(node.get('neighbors', [])) for node in original_data)
             avg_degree = total_edges / len(original_data) if original_data else 0
             
             main_logger.info(f"[GraphEnhancementAgent] Original graph: {len(original_data)} nodes, avg degree: {avg_degree:.2f}")
             
-            # Process each enhanced node
             for node in enhanced_data:
                 current_neighbors = node.get('neighbors', [])
                 
                 if mode == "semantic":
-                    # For semantic mode: moderate edge probability, focus on semantic similarity
                     edge_prob = 0.3
                     target_degree = max(2, int(avg_degree * 0.8))
-                else:  # topological mode
-                    # For topological mode: higher edge probability, focus on structure
+                else:
                     edge_prob = 0.5
                     target_degree = max(3, int(avg_degree * 1.2))
                 
-                # Filter neighbors to only include existing nodes
                 valid_neighbors = [n for n in current_neighbors if n in existing_node_ids]
                 
-                # If we have too few neighbors, try to add more from original data
                 if len(valid_neighbors) < target_degree:
-                    # Sample additional neighbors from original data
                     potential_neighbors = list(existing_node_ids - set(valid_neighbors))
                     
                     if potential_neighbors:
-                        # For topological mode, prefer nodes with same label
                         if mode == "topological" and 'label' in node:
                             same_label_nodes = [
                                 orig_node['node_id'] 
@@ -331,23 +332,19 @@ Here are the generated datasets:"""
                                     n for n in potential_neighbors if n not in same_label_nodes
                                 ]
                         
-                        # Add neighbors based on probability
                         num_to_add = min(
                             target_degree - len(valid_neighbors),
                             len(potential_neighbors)
                         )
                         
-                        for neighbor in potential_neighbors[:num_to_add * 2]:  # Consider 2x candidates
+                        for neighbor in potential_neighbors[:num_to_add * 2]:
                             if len(valid_neighbors) >= target_degree:
                                 break
                             if random.random() < edge_prob:
                                 valid_neighbors.append(neighbor)
                 
-                # Update neighbors
-                node['neighbors'] = valid_neighbors[:target_degree * 2]  # Cap at 2x target
+                node['neighbors'] = valid_neighbors[:target_degree * 2]
                 
-            main_logger.info(f"[GraphEnhancementAgent] Applied {mode} edge probability model to {len(enhanced_data)} nodes")
-            
         except Exception as e:
             main_logger.error(f"[GraphEnhancementAgent] Error in edge probability model: {e}")
             import traceback

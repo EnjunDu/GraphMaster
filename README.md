@@ -44,7 +44,6 @@ GraphMaster is a novel multi-agent system for **graph data enhancement**, built 
 │   └── cora.json              # Input graph (JSON format)
 \data                          # data-limited datasets, and the corresponding generate data 
 \log                           # logs while run the pipline
-\old_codes                     # old version of GraphMaster
 \tricks                        # Some preprocessing codes
 \Vertification                 # GNN verification model, used for Bert&GNN to verify data effects
 ```
@@ -89,12 +88,24 @@ python main.py \
   --visualize_sampling
 ```
 
+or
+
+```
+python3 main.py \
+  --llm_model path/to/Qwen3-VL-8B-Instruct/ \
+  --gpu 0,1,2,3,4,5,6,7 \
+  --data_file ../data/SubCora.json
+```
+
+
+
 #### Supported `--llm_model`:
 
 - `Qwen` → Qwen1.5-32B
 - `Deepseek` → DeepSeek-R1-Distill-Qwen-32B
 - `LLaMA` → Samantha 1.1 (LLaMA 33B)
 - `QwQ` → Qwen/QwQ-32B (preview model)
+- `Qwen3-VL-8B`
 
 > Custom models also supported by providing HF path.
 

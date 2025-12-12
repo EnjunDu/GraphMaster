@@ -1,10 +1,9 @@
-# evaluation_agent.py
-
 import json
 import time
 import threading
 import tempfile
 import re
+from typing import Tuple
 from transformers import TextGenerationPipeline
 import logging
 
@@ -25,9 +24,9 @@ class GraphEvaluationAgent:
         """
         self.text_generation = text_generation_pipeline
         self.max_new_tokens = max_new_tokens
-        self.quality_threshold = 7.0  # Initial quality threshold
-        self.previous_avg_quality = None  # Store previous average quality
-        self.quality_history = []  # Store quality history for convergence detection
+        self.quality_threshold = 7.0
+        self.previous_avg_quality = None
+        self.quality_history = []
 
     def evaluate_graph(self,
                       original_data_str: str,
@@ -35,9 +34,10 @@ class GraphEvaluationAgent:
                       initial_environment_report: str,
                       current_environment_report: str,
                       mode: str = "semantic",
-                      target_label: str = None,
-                      perception_agent=None
-                      ) -> str:
+                      target_label: int = None,
+                      perception_agent=None,
+                      early_stopping: int = 10
+                      ) -> Tuple[str, bool]:
         """
         Implements a comprehensive verification mechanism that integrates four critical 
         information sources: R_0 (initial environment), R_t (current environment),
@@ -52,33 +52,28 @@ class GraphEvaluationAgent:
         :param mode: Enhancement mode ('semantic' or 'topological')
         :param target_label: Target label for topological mode
         :param perception_agent: PerceptionAgent instance for generating new reports
-        :return: Evaluation result (JSON string)
+        :param early_stopping: Early stopping threshold
+        :return: (evaluated_json_str, continue_flag) tuple
         """
         main_logger = logging.getLogger("main_logger")
 
-        # Generate enhanced environment report based on combined data
         enhanced_environment_report = ""
         if perception_agent:
             try:
-                # Parse and combine data
                 original_data = json.loads(original_data_str) if original_data_str else []
                 generated_data = json.loads(generated_data_str) if generated_data_str else []
 
-                # Ensure data are lists
                 if not isinstance(original_data, list):
                     original_data = [original_data]
                 if not isinstance(generated_data, list):
                     generated_data = [generated_data]
 
-                # Combine data
                 combined_data = original_data + generated_data
 
-                # Write to temporary file
                 with tempfile.NamedTemporaryFile(suffix='.json', mode='w+', delete=False) as tmp:
                     json.dump(combined_data, tmp, ensure_ascii=False, indent=2)
                     tmp_filename = tmp.name
 
-                # Generate enhanced environment report
                 enhanced_environment_report = perception_agent.generate_environment_report(
                     require_label_distribution=True,
                     data_file=tmp_filename
@@ -87,14 +82,12 @@ class GraphEvaluationAgent:
                 main_logger.info(f"[GraphEvaluationAgent] Generated enhanced environment report based on combined data")
             except Exception as e:
                 main_logger.error(f"[GraphEvaluationAgent] Error generating enhanced environment report: {e}")
-                # Use current report if generation fails
                 enhanced_environment_report = current_environment_report
         else:
             main_logger.warning(
                 "[GraphEvaluationAgent] No perception_agent provided, skipping enhanced report generation")
             enhanced_environment_report = current_environment_report
 
-        # Create a prompt for evaluation
         prompt_for_evaluation = self._create_evaluation_prompt(
             original_data_str, 
             generated_data_str,
@@ -108,39 +101,45 @@ class GraphEvaluationAgent:
         main_logger.info(
             f"[GraphEvaluationAgent] Starting evaluation based on all environment reports comparison, mode={mode}.")
 
-        # Send prompt to LLM
         raw_output = self._call_generation(prompt_for_evaluation, int(self.max_new_tokens * 1.5))
         
-        # Log raw output for debugging
         main_logger.info(f"[GraphEvaluationAgent] Raw LLM output length: {len(raw_output)}")
         main_logger.info(f"[GraphEvaluationAgent] Raw output preview (first 500 chars):\n{raw_output[:500]}")
         
-        # Extract evaluated JSON and quality scores
         splitted_flag = "here are the generated datasets:"
         evaluated_json_str = self._extract_after_flag(raw_output, splitted_flag)
         
-        # Extract quality scores if present
         quality_scores = self._extract_quality_scores(raw_output)
         if quality_scores:
             main_logger.info(f"[GraphEvaluationAgent] Quality scores extracted: {quality_scores}")
         
-        # Update adaptive threshold
         avg_quality = sum(quality_scores.values()) / len(quality_scores) if quality_scores else 0
         self._update_threshold(avg_quality)
         
-        # Store quality history for convergence detection
         self.quality_history.append(avg_quality)
         
-        # Check for convergence
         convergence_status = self._check_convergence(
             initial_environment_report, enhanced_environment_report, quality_scores
         )
         main_logger.info(f"[GraphEvaluationAgent] Convergence status: {convergence_status}")
         
-        if not evaluated_json_str.strip():
+        converged = convergence_status.get("converged", False)
+        has_valid_data = evaluated_json_str.strip() and evaluated_json_str != "[]"
+        
+        if converged:
+            main_logger.info("[GraphEvaluationAgent] ✓ Convergence detected, will stop iterations")
+            continue_flag = False
+        elif not has_valid_data:
+            main_logger.warning("[GraphEvaluationAgent] ✗ No valid evaluated data, will stop iterations")
+            continue_flag = False
+        else:
+            main_logger.info("[GraphEvaluationAgent] → Not yet converged, will continue iterations")
+            continue_flag = True
+        
+        if not has_valid_data:
             main_logger.error("[GraphEvaluationAgent] Warning: LLM returned empty evaluation result.")
         
-        return evaluated_json_str
+        return evaluated_json_str, continue_flag
 
     def _create_evaluation_prompt(self, original_data_str, generated_data_str, 
                                   initial_environment_report, current_environment_report,
@@ -185,22 +184,23 @@ Only keep nodes with quality scores above threshold ({self.quality_threshold}).
 
 If you find any generated data unreasonable, you should remove it.
 
-CRITICAL OUTPUT FORMAT:
-- You MUST output valid JSON starting with [ and ending with ]
-- Do NOT include explanations before or after the JSON
-- Do NOT wrap JSON in markdown code blocks
-- Start with "Quality Scores:" section FIRST
-- Then say "Here are the generated datasets:" followed immediately by the JSON array
+CRITICAL OUTPUT FORMAT - YOU MUST FOLLOW THIS EXACTLY:
+1. First line: "Quality Scores:"
+2. Next lines: One score per line in format "node_id: score" (e.g., "new_node_1: 8.5")
+3. Then a blank line
+4. Then the line: "Here are the generated datasets:"
+5. Then ONLY the JSON array starting with [ and ending with ]
+6. NO explanations or text after the JSON array
 
-Example format:
+Example:
 Quality Scores:
 new_node_1: 8.5
 new_node_2: 7.2
 
 Here are the generated datasets:
-[{{"node_id": "new_node_1", ...}}]
+[{{"node_id": "new_node_1", "label": 5, ...}}, {{"node_id": "new_node_2", "label": 5, ...}}]
 """
-        else:  # mode == "semantic"
+        else:
             prompt = f"""# Graph Data Evaluation Task: Semantic Enhancement
 
 You are a Graph Data Evaluation Agent.
@@ -237,20 +237,21 @@ Only keep nodes with quality scores above threshold ({self.quality_threshold}).
 
 If you find any generated data unreasonable or detrimental to graph quality, you should remove it.
 
-CRITICAL OUTPUT FORMAT:
-- You MUST output valid JSON starting with [ and ending with ]
-- Do NOT include explanations before or after the JSON
-- Do NOT wrap JSON in markdown code blocks
-- Start with "Quality Scores:" section FIRST
-- Then say "Here are the generated datasets:" followed immediately by the JSON array
+CRITICAL OUTPUT FORMAT - YOU MUST FOLLOW THIS EXACTLY:
+1. First line: "Quality Scores:"
+2. Next lines: One score per line in format "node_id: score" (e.g., "new_node_1: 8.5")
+3. Then a blank line
+4. Then the line: "Here are the generated datasets:"
+5. Then ONLY the JSON array starting with [ and ending with ]
+6. NO explanations or text after the JSON array
 
-Example format:
+Example:
 Quality Scores:
 new_node_1: 8.5
 new_node_2: 7.2
 
 Here are the generated datasets:
-[{{"node_id": "new_node_1", ...}}]
+[{{"node_id": "new_node_1", "label": 3, ...}}, {{"node_id": "new_node_2", "label": 3, ...}}]
 """
         return prompt
 
@@ -261,14 +262,12 @@ Here are the generated datasets:
         quality_scores = {}
         scores_section = ""
         
-        # Find the quality scores section
         quality_idx = raw_output.find("Quality Scores:")
         datasets_idx = raw_output.lower().find("here are the generated datasets:")
         
         if quality_idx != -1 and datasets_idx != -1 and quality_idx < datasets_idx:
             scores_section = raw_output[quality_idx:datasets_idx].strip()
             
-            # Parse scores - looking for patterns like "new_node 1: 8.5" or similar
             pattern = r"(new_node[_\s]*\d+|node[_\s]*\d+):\s*(\d+\.?\d*)"
             matches = re.findall(pattern, scores_section, re.IGNORECASE)
             
@@ -282,14 +281,10 @@ Here are the generated datasets:
         Updates the adaptive threshold based on average quality scores.
         τ_t = τ_(t-1) + ζ(F̄_t - F̄_(t-1))
         """
-        # If we have previous average, update threshold
         if self.previous_avg_quality is not None:
-            # Calculate new threshold
             self.quality_threshold += zeta * (avg_quality - self.previous_avg_quality)
-            # Ensure threshold stays in reasonable range
             self.quality_threshold = max(5.0, min(9.0, self.quality_threshold))
         
-        # Update previous average for next iteration
         self.previous_avg_quality = avg_quality
         
         main_logger = logging.getLogger("main_logger")
@@ -304,25 +299,19 @@ Here are the generated datasets:
         """
         main_logger = logging.getLogger("main_logger")
         
-        # Check if quality scores are available
         if not quality_scores:
             return {"converged": False, "reason": "No quality scores available"}
         
-        # Calculate average quality
         avg_quality = sum(quality_scores.values()) / len(quality_scores)
         
-        # Temporal quality gradient analysis
         gradient_converged = False
         if len(self.quality_history) >= window_size:
-            # Check if quality improvement has plateaued
             max_gradient = max([abs(avg_quality - self.quality_history[-j-1]) 
                                 for j in range(min(window_size, len(self.quality_history)-1))])
             gradient_converged = max_gradient < epsilon
         
-        # Use LLM to check if synthesis objectives have been achieved
         goal_achievement = self._assess_goal_achievement(initial_report, current_report)
         
-        # Determine overall convergence
         converged = gradient_converged and goal_achievement.get("achieved", False)
         
         return {
@@ -359,12 +348,9 @@ Output your assessment as a JSON with two fields:
 Your response should be ONLY the JSON with no additional text.
 """
         
-        # Call LLM with shorter max tokens
         output = self._call_generation(prompt, max_tokens=512)
         
-        # Try to extract JSON
         try:
-            # Find JSON-like content in the output
             json_pattern = r'\{.*\}'
             match = re.search(json_pattern, output, re.DOTALL)
             if match:
@@ -375,7 +361,6 @@ Your response should be ONLY the JSON with no additional text.
             main_logger = logging.getLogger("main_logger")
             main_logger.error(f"[GraphEvaluationAgent] Error parsing goal achievement: {e}")
         
-        # Default return if parsing fails
         return {"achieved": False, "reason": "Failed to assess goal achievement"}
 
     def _call_generation(self, prompt: str, max_tokens: int) -> str:
@@ -387,7 +372,6 @@ Your response should be ONLY the JSON with no additional text.
 
         def generate_output():
             try:
-                # **修复：添加必要参数确保生成新内容**
                 output = self.text_generation(
                     prompt,
                     max_new_tokens=max_tokens,
@@ -406,8 +390,7 @@ Your response should be ONLY the JSON with no additional text.
         gen_thread = threading.Thread(target=generate_output)
         gen_thread.start()
 
-        # 增加超时时间
-        timeout = 600  # 10 minutes for evaluation
+        timeout = 600
         gen_thread.join(timeout=timeout)
         
         if gen_thread.is_alive():
@@ -426,7 +409,6 @@ Your response should be ONLY the JSON with no additional text.
             main_logger.error("[GraphEvaluationAgent] LLM returned empty output")
             return "[]"
         
-        # **关键：去除 prompt 前缀**
         if full_output.startswith(prompt):
             generated_only = full_output[len(prompt):].strip()
             main_logger.info(f"[GraphEvaluationAgent] Removed prompt prefix, generated length: {len(generated_only)}")
@@ -439,7 +421,7 @@ Your response should be ONLY the JSON with no additional text.
 
     def _extract_after_flag(self, text: str, flag: str) -> str:
         """
-        Extract JSON-like content from the LLM output.
+        Extract JSON-like content from the LLM output with robust repair mechanism.
         """
         logger = logging.getLogger("main_logger")
 
@@ -447,15 +429,12 @@ Your response should be ONLY the JSON with no additional text.
             logger.error("[GraphEvaluationAgent] Empty or whitespace-only input")
             return "[]"
 
-        # Log input
         logger.info(f"[GraphEvaluationAgent] _extract_after_flag input length: {len(text)}")
         logger.info(f"[GraphEvaluationAgent] Input preview (first 300 chars): {text[:300]}")
         
-        # Convert to lowercase for case-insensitive matching
         text_lower = text.lower()
         flag_lower = flag.lower()
         
-        # Try to find content after flag
         candidate = text
         if flag_lower in text_lower:
             idx = text_lower.find(flag_lower)
@@ -464,7 +443,6 @@ Your response should be ONLY the JSON with no additional text.
         else:
             logger.warning(f"[GraphEvaluationAgent] Flag '{flag}' not found, using full text")
         
-        # Remove markdown code blocks
         if candidate.startswith("```"):
             lines = candidate.split('\n')
             if lines[0].strip().startswith("```"):
@@ -474,7 +452,6 @@ Your response should be ONLY the JSON with no additional text.
             candidate = '\n'.join(lines).strip()
             logger.info(f"[GraphEvaluationAgent] Removed markdown, length: {len(candidate)}")
         
-        # Find JSON array boundaries
         start = candidate.find("[")
         end = candidate.rfind("]")
         
@@ -487,15 +464,84 @@ Your response should be ONLY the JSON with no additional text.
         json_str = candidate[start:end + 1]
         logger.info(f"[GraphEvaluationAgent] Extracted JSON length: {len(json_str)}")
         
-        # Validate JSON
         try:
             parsed = json.loads(json_str)
             if not isinstance(parsed, list):
                 logger.error(f"[GraphEvaluationAgent] Parsed JSON is not a list: {type(parsed)}")
                 return "[]"
-            logger.info(f"[GraphEvaluationAgent] Successfully parsed JSON with {len(parsed)} items")
+            logger.info(f"[GraphEvaluationAgent] ✓ Successfully parsed JSON with {len(parsed)} items")
             return json_str
         except json.JSONDecodeError as e:
-            logger.error(f"[GraphEvaluationAgent] JSON parsing failed: {e}")
-            logger.error(f"[GraphEvaluationAgent] Problematic JSON (first 500 chars): {json_str[:500]}")
-            return "[]"
+            logger.warning(f"[GraphEvaluationAgent] Initial JSON parsing failed: {e}")
+            logger.info("[GraphEvaluationAgent] Attempting to repair JSON...")
+            
+            repaired_json = self._repair_incomplete_json(json_str)
+            if repaired_json:
+                logger.info(f"[GraphEvaluationAgent] ✓ Successfully repaired JSON")
+                return repaired_json
+            else:
+                logger.error(f"[GraphEvaluationAgent] ✗ Could not repair JSON")
+                logger.error(f"[GraphEvaluationAgent] Problematic JSON (first 1000 chars): {json_str[:1000]}")
+                return "[]"
+
+    def _repair_incomplete_json(self, json_str: str) -> str:
+        """
+        Attempts to repair incomplete JSON by finding complete objects.
+        """
+        logger = logging.getLogger("main_logger")
+        
+        try:
+            objects = []
+            depth = 0
+            current_obj = ""
+            in_string = False
+            escape_next = False
+            
+            for i, char in enumerate(json_str):
+                if escape_next:
+                    current_obj += char
+                    escape_next = False
+                    continue
+                
+                if char == '\\':
+                    current_obj += char
+                    escape_next = True
+                    continue
+                
+                if char == '"' and not in_string:
+                    in_string = True
+                    current_obj += char
+                elif char == '"' and in_string:
+                    in_string = False
+                    current_obj += char
+                elif char == '{' and not in_string:
+                    if depth == 0:
+                        current_obj = "{"
+                    else:
+                        current_obj += char
+                    depth += 1
+                elif char == '}' and not in_string:
+                    current_obj += char
+                    depth -= 1
+                    if depth == 0:
+                        try:
+                            obj = json.loads(current_obj)
+                            objects.append(obj)
+                            logger.debug(f"[GraphEvaluationAgent] Found complete object: {current_obj[:100]}...")
+                        except:
+                            pass
+                        current_obj = ""
+                else:
+                    if depth > 0:
+                        current_obj += char
+            
+            if objects:
+                repaired = json.dumps(objects, ensure_ascii=False)
+                logger.info(f"[GraphEvaluationAgent] Repaired JSON with {len(objects)} complete objects")
+                return repaired
+            else:
+                return None
+                
+        except Exception as e:
+            logger.error(f"[GraphEvaluationAgent] Error during JSON repair: {e}")
+            return None
