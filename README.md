@@ -147,6 +147,10 @@ For Verification, please refer to [Verification_README](./Verification/README.md
 - Auto-selects enhancement mode based on multi-objective utility
 - Updates adaptive weights (λ₁, λ₂, λ₃)
 
+
+## Datasets
+
+Full source datasets are open-source at (https://huggingface.co/datasets/EnjunDu/GraphMaster)[https://huggingface.co/datasets/EnjunDu/GraphMaster].
 ## 📊 Citation-Style Motivation
 
 > "GraphMaster simulates a human-guided editing process on attributed graphs by iteratively improving data with structured perception, controlled generation, and critical evaluation — powered by LLMs."
@@ -156,3 +160,4 @@ For Verification, please refer to [Verification_README](./Verification/README.md
 ## 📘 License
 
 MIT License
+
