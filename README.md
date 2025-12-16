@@ -150,7 +150,7 @@ For Verification, please refer to [Verification_README](./Verification/README.md
 
 ## Datasets
 
-Full source datasets are open-source at (https://huggingface.co/datasets/EnjunDu/GraphMaster)[https://huggingface.co/datasets/EnjunDu/GraphMaster].
+Full source datasets are open-source at [https://huggingface.co/datasets/EnjunDu/GraphMaster](https://huggingface.co/datasets/EnjunDu/GraphMaster).
 ## 📊 Citation-Style Motivation
 
 > "GraphMaster simulates a human-guided editing process on attributed graphs by iteratively improving data with structured perception, controlled generation, and critical evaluation — powered by LLMs."
@@ -160,4 +160,5 @@ Full source datasets are open-source at (https://huggingface.co/datasets/EnjunDu
 ## 📘 License
 
 MIT License
+
 
